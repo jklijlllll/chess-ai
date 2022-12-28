@@ -1,6 +1,8 @@
 import pygame as p
 import ChessEngine
-import Piece
+import Classes.Piece as Piece
+from Classes.Move import Move
+from Classes.Square import Square
 
 WIDTH = HEIGHT = 512
 DIMENSION = 8
@@ -35,16 +37,16 @@ def main():
             if e.type == p.QUIT:
                 running = False
             if e.type == p.MOUSEBUTTONDOWN:
-                rank = int(p.mouse.get_pos()[1] / SQ_SIZE)
-                file = int(p.mouse.get_pos()[0] / SQ_SIZE)
-                square = game_state.board[rank][file]
-                if game_state.selected is not None and square is Piece.EMPTY:
-                    game_state.board[game_state.selected[1]][game_state.selected[2]] = Piece.EMPTY
-                    game_state.board[rank][file] = game_state.selected[0]
+                position = (int(p.mouse.get_pos()[1] / SQ_SIZE) * DIMENSION + int(p.mouse.get_pos()[0] / SQ_SIZE))
+                piece = game_state.board[position]
+                if game_state.selected is not None:
+                    game_state.board[game_state.selected.position] = Piece.EMPTY
+                    game_state.board[position] = game_state.selected.piece
+                    game_state.moveLog.append(Move(game_state.selected.position, position))
                     game_state.selected = None
-                if square is not Piece.EMPTY:
-                    game_state.selected = [square, rank, file]    
-            
+                elif piece is not Piece.EMPTY:
+                    game_state.selected = Square(piece, position) 
+                    
         drawGameState(screen, game_state)
         clock.tick(MAX_FPS)
         p.display.flip()
@@ -53,26 +55,27 @@ def main():
 Draws all the graphics within the current game state
 """
 def drawGameState(screen, game_state):
-    drawBoard(screen)
-    drawPieces(screen, game_state.board)
+    drawBoard(screen, game_state.board, game_state.selected, game_state.moveLog)
 
 """
 Draws the chess board
 """
-def drawBoard(screen):
+def drawBoard(screen, board, selected, moveLog):
     for r in range(DIMENSION):
         for c in range(DIMENSION):
             p.draw.rect(screen, p.Color(238,238,210) if (r + c) % 2 == 0 else p.Color(118,150,86), p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-
-"""
-Draws the pieces based on the current game state
-"""
-def drawPieces(screen, board):
-    for r in range(DIMENSION):
-        for c in range(DIMENSION):
-            piece = board[r][c]
+            piece = board[r * DIMENSION + c]
             if piece != Piece.EMPTY:
                 screen.blit(IMAGES[piece], p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    if selected is not None:
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        screen.blit(IMAGES[selected.piece], p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    elif moveLog:
+        lastMove = moveLog[-1]
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startPosition % DIMENSION * SQ_SIZE, int(lastMove.startPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        # start position will always be empty
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, int(lastMove.endPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        screen.blit(IMAGES[board[lastMove.endPosition]], p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, int(lastMove.endPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
 if __name__ == "__main__":
     main()
