@@ -12,14 +12,10 @@ IMAGES = {}
 Loads piece images
 """
 def loadImages():
-    pieces = [Piece.WHITE | Piece.PAWN,  Piece.WHITE | Piece.KNIGHT,   Piece.WHITE | Piece.BISHOP,   
-    Piece.WHITE | Piece.ROOK,   Piece.WHITE | Piece.QUEEN, Piece.WHITE | Piece.KING, 
-    Piece.BLACK | Piece.PAWN,  Piece.BLACK | Piece.KNIGHT,   Piece.BLACK | Piece.BISHOP,   
-    Piece.BLACK | Piece.ROOK,   Piece.BLACK | Piece.QUEEN,  Piece.BLACK | Piece.KING]
-    pieceImageNames = ["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK"]
-    pieceDict = dict(zip(pieces, pieceImageNames))
+    
+    pieceDict = dict(zip(Piece.pieces, Piece.pieceImageNames))
 
-    for piece in pieces:
+    for piece in Piece.pieces:
         IMAGES[piece] = p.transform.scale(p.image.load("ChessAI/Images/" + pieceDict[piece] + ".png"), (SQ_SIZE, SQ_SIZE))
 
 """
@@ -38,6 +34,17 @@ def main():
         for e in p.event.get():
             if e.type == p.QUIT:
                 running = False
+            if e.type == p.MOUSEBUTTONDOWN:
+                rank = int(p.mouse.get_pos()[1] / SQ_SIZE)
+                file = int(p.mouse.get_pos()[0] / SQ_SIZE)
+                square = game_state.board[rank][file]
+                if game_state.selected is not None and square is Piece.EMPTY:
+                    game_state.board[game_state.selected[1]][game_state.selected[2]] = Piece.EMPTY
+                    game_state.board[rank][file] = game_state.selected[0]
+                    game_state.selected = None
+                if square is not Piece.EMPTY:
+                    game_state.selected = [square, rank, file]    
+            
         drawGameState(screen, game_state)
         clock.tick(MAX_FPS)
         p.display.flip()
@@ -48,7 +55,6 @@ Draws all the graphics within the current game state
 def drawGameState(screen, game_state):
     drawBoard(screen)
     drawPieces(screen, game_state.board)
-
 
 """
 Draws the chess board
