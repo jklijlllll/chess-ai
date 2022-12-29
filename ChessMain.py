@@ -44,8 +44,10 @@ def main():
                     game_state.board[position] = game_state.selected.piece
                     game_state.moveLog.append(Move(game_state.selected.position, position))
                     game_state.selected = None
+                    game_state.possibleMoves = []
                 elif piece is not Piece.EMPTY:
                     game_state.selected = Square(piece, position) 
+                    game_state.generate_sliding_moves(position, piece)
                     
         drawGameState(screen, game_state)
         clock.tick(MAX_FPS)
@@ -55,12 +57,12 @@ def main():
 Draws all the graphics within the current game state
 """
 def drawGameState(screen, game_state):
-    drawBoard(screen, game_state.board, game_state.selected, game_state.moveLog)
+    drawBoard(screen, game_state.board, game_state.selected, game_state.possibleMoves ,game_state.moveLog)
 
 """
 Draws the chess board
 """
-def drawBoard(screen, board, selected, moveLog):
+def drawBoard(screen, board, selected, possibleMoves, moveLog):
     for r in range(DIMENSION):
         for c in range(DIMENSION):
             p.draw.rect(screen, p.Color(238,238,210) if (r + c) % 2 == 0 else p.Color(118,150,86), p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE))
@@ -70,6 +72,12 @@ def drawBoard(screen, board, selected, moveLog):
     if selected is not None:
         p.draw.rect(screen, p.Color(186,202,68), p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         screen.blit(IMAGES[selected.piece], p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        if possibleMoves is not None:
+            for i in range(len(possibleMoves)):
+                position = possibleMoves[i]     
+                p.draw.rect(screen, p.Color(255,255,255), p.Rect(position % DIMENSION * SQ_SIZE, int(position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+                if board[position] is not Piece.EMPTY:
+                    screen.blit(IMAGES[board[position]], p.Rect(position % DIMENSION * SQ_SIZE, int(position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
     elif moveLog:
         lastMove = moveLog[-1]
         p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startPosition % DIMENSION * SQ_SIZE, int(lastMove.startPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
