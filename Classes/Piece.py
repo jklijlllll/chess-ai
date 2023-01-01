@@ -16,9 +16,13 @@ pieceImageNames = ["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "
 pieceNames = ["P", "N", "B", "R", "Q", "K", "p", "n", "b", "r", "q", "k"]
 
 typeMask = 0b00111
+colorMask = 0b11000
 
 def is_same_color(p1, p2):
     return p1 >> 3 == p2 >> 3
 
 def is_same_type(p1, p2):
     return (p1 & typeMask) == (p2 & typeMask)
+
+def is_white(p):
+    return p & colorMask == WHITE

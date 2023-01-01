@@ -6,7 +6,10 @@ Defines the current game state (piece placement, current turn, and move log)
 
 class GameState():
     START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    directions = [-8 , 8 , -1, 1, -9, 9, -7, 7]
+    directions = [8, -8, -1, 1, 7, -7, 9, -9 ]
+    pawnDirections = [[8, 7, 9],[-8, -7, -9]]
+    knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
+
 
     def __init__(self) -> None: 
         self.board = [[Piece.EMPTY] for i in range(64)]
@@ -14,7 +17,61 @@ class GameState():
         self.moveLog = []
         self.selected = None
         self.set_state(self.START_POSITION)
-        self.numSquaresToEdge = self.__init_numSquaresToEdge()
+
+        numsSquaresToEdge = [[0] * 8 for i in range(64)]
+        knightMoves = [[0] * 8 for i in range(64)]
+        kingMoves = [[0] * 8 for i in range(64)]
+        for i in range(len(self.board)):
+            rank = int(i / 8)
+            file = i % 8
+
+            numNorth = 7 - rank
+            numSouth = rank
+            numWest = file
+            numEast = 7 - file
+            numsSquaresToEdge[i] = [
+                numNorth,
+                numSouth,
+                numWest,
+                numEast,
+                min(numNorth, numWest),
+                min(numSouth, numEast),
+                min(numNorth, numEast),
+                min(numSouth, numWest)
+                ]
+
+            knightSquares = []
+            for j in range(len(self.knightDirections)):
+                endSquare = i + self.knightDirections[j]
+                if self.within_board(endSquare):
+                    y = int (endSquare / 8)
+                    x = endSquare % 8
+
+                    # Prevent moves from wrapping around board
+                    maxDistance = max(abs(rank - y), abs(file - x))
+                
+                    if maxDistance == 2:
+                        knightSquares.append(self.knightDirections[j])
+            knightMoves[i] = knightSquares
+
+            kingSquares = []
+            for k in range(len(self.directions)):
+                endSquare = i + self.directions[k]
+                if self.within_board(endSquare):
+                    y = int (endSquare / 8)
+                    x = endSquare % 8
+
+                    # Prevent moves from wrapping around board
+                    maxDistance = max(abs(rank - y), abs(file - x))
+                
+                    if maxDistance == 1:
+                        kingSquares.append(self.directions[k])
+            kingMoves[i] = kingSquares
+
+        self.numSquaresToEdge = numsSquaresToEdge
+        self.knightMoves = knightMoves
+        self.kingMoves = kingMoves
+
         self.possibleMoves = []
     
     def set_state(self, record: str) -> None:
@@ -23,17 +80,19 @@ class GameState():
         fields = record.split(' ')
         
         # Piece placement
-        placement = ''.join(fields[0].split('/'))
-        square = 0
+        placement = fields[0].split('/')
+        square = 63
+
         for i in range(len(placement)):
-            if placement[i] in pieceDict:
-                self.board[square] = pieceDict[placement[i]]
-                square += 1
-            if placement[i].isnumeric():
-                for k in range(int(placement[i])):
-                    self.board[square] = Piece.EMPTY
-                    square+= 1 
-        
+            for piece in reversed(placement[i]):
+                if piece in pieceDict:
+                    self.board[square] = pieceDict[piece]
+                    square -= 1
+                if piece.isnumeric():
+                    for k in range(int(piece)):
+                        self.board[square] = Piece.EMPTY
+                        square-= 1 
+       
         # Side to move
         self.whiteToMove = fields[1] == "w"
         
@@ -42,27 +101,11 @@ class GameState():
         # Halfmove clock
         # Fullmove clock
 
-    def __init_numSquaresToEdge(self):
+    def get_rank(self, position: int):
+        return int(position / 8) 
 
-        numsSquaresToEdge = [[0] * 8 for i in range(64)]
-        for rank in range(8):
-            for file in range(8):
-                numNorth = rank
-                numSouth = 7 - rank
-                numWest = file
-                numEast = 7 - file
-                numsSquaresToEdge[rank * 8 + file] = [
-                    numNorth,
-                    numSouth,
-                    numWest,
-                    numEast,
-                    min(numNorth, numWest),
-                    min(numSouth, numEast),
-                    min(numNorth, numEast),
-                    min(numSouth, numWest)
-                    ]
-
-        return numsSquaresToEdge
+    def within_board(self, position: int):
+        return 0 <= position < 64
 
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
@@ -78,5 +121,42 @@ class GameState():
                     if not Piece.is_same_color(piece, self.board[endPosition]):
                         self.possibleMoves.append(endPosition)
                     break
-                
 
+    def generate_pawn_moves(self, startSquare: int, piece: int):
+        # TODO: add en passant moves
+        # TODO: add promotion
+        dir = self.pawnDirections[0] if Piece.is_white(piece) else self.pawnDirections[1]
+        pawnStartRank = 1 if Piece.is_white(piece) else 6
+       
+        endSquare = startSquare + dir[0]
+        if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY:
+            self.possibleMoves.append(endSquare)
+            if self.get_rank(startSquare) == pawnStartRank and self.within_board(endSquare + dir[0])  and self.board[endSquare] is Piece.EMPTY:
+                self.possibleMoves.append(endSquare + dir[0])
+
+        for i in range(1, len(dir)):
+            endSquare = startSquare + dir[i]
+            if self.within_board(endSquare) and self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
+                self.possibleMoves.append(endSquare)
+
+    def generate_knight_moves(self, startSquare: int, piece: int):
+
+        for i in range(len(self.knightMoves[startSquare])):
+            endSquare = startSquare + self.knightMoves[startSquare][i]
+            target = self.board[endSquare]
+            if target is Piece.EMPTY:
+                self.possibleMoves.append(endSquare)
+            elif not Piece.is_same_color(piece, target):
+                self.possibleMoves.append(endSquare)
+
+    def generate_king_moves(self, startSquare: int, piece: int):
+
+        for i in range(len(self.kingMoves[startSquare])):
+            endSquare = startSquare + self.kingMoves[startSquare][i]
+            target = self.board[endSquare]
+            if target is Piece.EMPTY:
+                self.possibleMoves.append(endSquare)
+            elif not Piece.is_same_color(piece, target):
+                self.possibleMoves.append(endSquare)
+
+        

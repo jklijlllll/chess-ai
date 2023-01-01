@@ -37,7 +37,7 @@ def main():
             if e.type == p.QUIT:
                 running = False
             if e.type == p.MOUSEBUTTONDOWN:
-                position = (int(p.mouse.get_pos()[1] / SQ_SIZE) * DIMENSION + int(p.mouse.get_pos()[0] / SQ_SIZE))
+                position = int((HEIGHT - p.mouse.get_pos()[1] )/ SQ_SIZE) * DIMENSION + int(p.mouse.get_pos()[0] /SQ_SIZE)
                 piece = game_state.board[position]
                 if game_state.selected is not None:
                     game_state.board[game_state.selected.position] = Piece.EMPTY
@@ -47,7 +47,10 @@ def main():
                     game_state.possibleMoves = []
                 elif piece is not Piece.EMPTY:
                     game_state.selected = Square(piece, position) 
-                    game_state.generate_sliding_moves(position, piece)
+                    # game_state.generate_sliding_moves(position, piece)
+                    # game_state.generate_pawn_moves(position, piece)
+                    # game_state.generate_knight_moves(position, piece)
+                    game_state.generate_king_moves(position, piece)
                     
         drawGameState(screen, game_state)
         clock.tick(MAX_FPS)
@@ -63,27 +66,30 @@ def drawGameState(screen, game_state):
 Draws the chess board
 """
 def drawBoard(screen, board, selected, possibleMoves, moveLog):
-    for r in range(DIMENSION):
-        for c in range(DIMENSION):
-            p.draw.rect(screen, p.Color(238,238,210) if (r + c) % 2 == 0 else p.Color(118,150,86), p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-            piece = board[r * DIMENSION + c]
-            if piece != Piece.EMPTY:
-                screen.blit(IMAGES[piece], p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+
+    for i in range(DIMENSION * DIMENSION):
+        rank = int(i / DIMENSION)
+        file = i % DIMENSION
+        p.draw.rect(screen, p.Color(238,238,210) if (rank + file) % 2 == 0 else p.Color(118,150,86), p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        piece = board[i]
+        if piece != Piece.EMPTY:
+            screen.blit(IMAGES[piece], p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+
     if selected is not None:
-        p.draw.rect(screen, p.Color(186,202,68), p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        screen.blit(IMAGES[selected.piece], p.Rect(selected.position % DIMENSION * SQ_SIZE, int(selected.position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(selected.position % DIMENSION * SQ_SIZE, (DIMENSION - int(selected.position / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        screen.blit(IMAGES[selected.piece], p.Rect(selected.position % DIMENSION * SQ_SIZE, (DIMENSION - int(selected.position / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         if possibleMoves is not None:
             for i in range(len(possibleMoves)):
                 position = possibleMoves[i]     
-                p.draw.rect(screen, p.Color(255,255,255), p.Rect(position % DIMENSION * SQ_SIZE, int(position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+                p.draw.rect(screen, p.Color(255,255,255), p.Rect(position % DIMENSION * SQ_SIZE, (DIMENSION - int(position / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
                 if board[position] is not Piece.EMPTY:
-                    screen.blit(IMAGES[board[position]], p.Rect(position % DIMENSION * SQ_SIZE, int(position / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+                    screen.blit(IMAGES[board[position]], p.Rect(position % DIMENSION * SQ_SIZE, (DIMENSION - int(position / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
     elif moveLog:
         lastMove = moveLog[-1]
-        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startPosition % DIMENSION * SQ_SIZE, int(lastMove.startPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startPosition % DIMENSION * SQ_SIZE,  (DIMENSION - int(lastMove.startPosition / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         # start position will always be empty
-        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, int(lastMove.endPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        screen.blit(IMAGES[board[lastMove.endPosition]], p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, int(lastMove.endPosition / DIMENSION) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endPosition / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        screen.blit(IMAGES[board[lastMove.endPosition]], p.Rect(lastMove.endPosition % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endPosition / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
 if __name__ == "__main__":
     main()
