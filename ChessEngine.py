@@ -1,4 +1,5 @@
 import Classes.Piece as Piece
+from Classes.Move import Move
 
 """
 Defines the current game state (piece placement, current turn, and move log)
@@ -9,7 +10,6 @@ class GameState():
     directions = [8, -8, -1, 1, 7, -7, 9, -9 ]
     pawnDirections = [[8, 7, 9],[-8, -7, -9]]
     knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
-
 
     def __init__(self) -> None: 
         self.board = [[Piece.EMPTY] for i in range(64)]
@@ -101,12 +101,28 @@ class GameState():
         # Halfmove clock
         # Fullmove clock
 
-    def get_rank(self, position: int):
-        return int(position / 8) 
+    def get_rank(self, square: int):
+        return int(square / 8) 
 
-    def within_board(self, position: int):
-        return 0 <= position < 64
+    def within_board(self, square: int):
+        return 0 <= square < 64
 
+    def generate_move(self, startSquare: int, piece: int):
+
+        if Piece.is_same_type(piece, Piece.BISHOP) or Piece.is_same_type(piece, Piece.ROOK) or Piece.is_same_type(piece, Piece.QUEEN):
+            self.generate_sliding_moves(startSquare, piece)
+        
+        elif Piece.is_same_type(piece, Piece.PAWN):
+            self.generate_pawn_moves(startSquare, piece)
+
+        elif Piece.is_same_type(piece, Piece.KING):
+            self.generate_king_moves(startSquare, piece)
+        
+        elif Piece.is_same_type(piece, Piece.KNIGHT):
+            self.generate_knight_moves(startSquare, piece)
+
+
+    # TODO: add castling
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
         startIndex = 4 if Piece.is_same_type(piece, Piece.BISHOP) else 0
@@ -114,12 +130,11 @@ class GameState():
         
         for dir in range(startIndex, endIndex):
             for num in range(self.numSquaresToEdge[startSquare][dir]):
-                endPosition = startSquare + (num + 1) * self.directions[dir]
-                if self.board[endPosition] is Piece.EMPTY:
-                    self.possibleMoves.append(endPosition)
-                else:
-                    if not Piece.is_same_color(piece, self.board[endPosition]):
-                        self.possibleMoves.append(endPosition)
+                endSquare = startSquare + (num + 1) * self.directions[dir]
+                if self.board[endSquare] is Piece.EMPTY:
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
+                elif not Piece.is_same_color(piece, self.board[endSquare]):
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
                     break
 
     def generate_pawn_moves(self, startSquare: int, piece: int):
@@ -130,14 +145,14 @@ class GameState():
        
         endSquare = startSquare + dir[0]
         if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY:
-            self.possibleMoves.append(endSquare)
+            self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
             if self.get_rank(startSquare) == pawnStartRank and self.within_board(endSquare + dir[0])  and self.board[endSquare] is Piece.EMPTY:
-                self.possibleMoves.append(endSquare + dir[0])
+                self.possibleMoves.append(Move(startSquare, endSquare + dir[0], piece, self.board[endSquare + dir[0]], Move.Flag.NONE))
 
         for i in range(1, len(dir)):
             endSquare = startSquare + dir[i]
             if self.within_board(endSquare) and self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
-                self.possibleMoves.append(endSquare)
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
 
     def generate_knight_moves(self, startSquare: int, piece: int):
 
@@ -145,9 +160,9 @@ class GameState():
             endSquare = startSquare + self.knightMoves[startSquare][i]
             target = self.board[endSquare]
             if target is Piece.EMPTY:
-                self.possibleMoves.append(endSquare)
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
             elif not Piece.is_same_color(piece, target):
-                self.possibleMoves.append(endSquare)
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
 
     def generate_king_moves(self, startSquare: int, piece: int):
 
@@ -155,8 +170,8 @@ class GameState():
             endSquare = startSquare + self.kingMoves[startSquare][i]
             target = self.board[endSquare]
             if target is Piece.EMPTY:
-                self.possibleMoves.append(endSquare)
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
             elif not Piece.is_same_color(piece, target):
-                self.possibleMoves.append(endSquare)
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
 
         
