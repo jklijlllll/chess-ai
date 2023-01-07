@@ -45,10 +45,15 @@ def main():
                     if move is not None:
                         game_state.board[game_state.selected.square] = Piece.EMPTY
                         game_state.board[square] = game_state.selected.piece
+                        if move.flag is Move.Flag.EN_PASSANT:
+                            game_state.board[game_state.enPassantSquare] = Piece.EMPTY
+                            game_state.enPassantSquare = None
                         game_state.moveLog.append(move)
-                        game_state.selected = None
-                        game_state.possibleMoves = []
                         game_state.whiteToMove = not game_state.whiteToMove
+             
+                    game_state.selected = None
+                    game_state.possibleMoves = []
+                    
                 else:
                     if piece is not Piece.EMPTY and game_state.whiteToMove is Piece.is_white(piece):
                         game_state.selected = Selected(square, piece)

@@ -72,6 +72,7 @@ class GameState():
         self.knightMoves = knightMoves
         self.kingMoves = kingMoves
 
+        self.enPassantSquare = None
         self.possibleMoves = []
     
     def set_state(self, record: str) -> None:
@@ -147,12 +148,21 @@ class GameState():
         if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY:
             self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
             if self.get_rank(startSquare) == pawnStartRank and self.within_board(endSquare + dir[0])  and self.board[endSquare] is Piece.EMPTY:
-                self.possibleMoves.append(Move(startSquare, endSquare + dir[0], piece, self.board[endSquare + dir[0]], Move.Flag.NONE))
+                self.possibleMoves.append(Move(startSquare, endSquare + dir[0], piece, self.board[endSquare + dir[0]], Move.Flag.PAWN_TWO_FORWARD))
 
         for i in range(1, len(dir)):
             endSquare = startSquare + dir[i]
             if self.within_board(endSquare) and self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
                 self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
+
+        if self.moveLog:
+            lastMove = self.moveLog[-1]
+            if lastMove.flag is Move.Flag.PAWN_TWO_FORWARD and not Piece.is_same_color(piece, lastMove.startPiece):
+                direction = -8 if Piece.is_white(lastMove.startPiece) else 8
+               
+                if lastMove.endSquare is startSquare + 1 or lastMove.endSquare is startSquare - 1:
+                    self.possibleMoves.append(Move(startSquare, lastMove.endSquare + direction, piece, self.board[lastMove.endSquare + direction], Move.Flag.EN_PASSANT))
+                    self.enPassantSquare = lastMove.endSquare
 
     def generate_knight_moves(self, startSquare: int, piece: int):
 

@@ -11,4 +11,5 @@ class Move:
     class Flag(Enum):
         NONE = 0
         PAWN_TWO_FORWARD = 1
+        EN_PASSANT = 2
         
