@@ -43,17 +43,30 @@ def main():
                     move = next((m for m in game_state.possibleMoves if m.endSquare is square), None)
 
                     if move is not None:
+
+                        pieceList = game_state.pieceLists[move.startPiece]
+                        pieceList[pieceList.index(move.startSquare)] = square
+                        
+                        if piece is not Piece.EMPTY:
+                            game_state.pieceLists[piece].remove(square)
+
                         game_state.board[game_state.selected.square] = Piece.EMPTY
                         game_state.board[square] = game_state.selected.piece
+
                         if move.flag is Move.Flag.EN_PASSANT:
+                            game_state.pieceLists[game_state.board[game_state.enPassantSquare]].remove(game_state.enPassantSquare)
+
                             game_state.board[game_state.enPassantSquare] = Piece.EMPTY
                             game_state.enPassantSquare = None
+
                         game_state.moveLog.append(move)
                         game_state.whiteToMove = not game_state.whiteToMove
-             
+
                     game_state.selected = None
                     game_state.possibleMoves = []
-                    
+                    game_state.generate_attack_map()
+                    if game_state.opponentAttackMap & (1 << game_state.pieceLists[(Piece.WHITE if game_state.whiteToMove else Piece.BLACK) | Piece.KING]):
+                        print("check")
                 else:
                     if piece is not Piece.EMPTY and game_state.whiteToMove is Piece.is_white(piece):
                         game_state.selected = Selected(square, piece)
@@ -69,17 +82,20 @@ def main():
 Draws all the graphics within the current game state
 """
 def drawGameState(screen, game_state):
-    drawBoard(screen, game_state.board, game_state.selected, game_state.possibleMoves ,game_state.moveLog)
+    drawBoard(screen, game_state.board, game_state.selected, game_state.possibleMoves , game_state.moveLog, game_state.opponentAttackMap)
 
 """
 Draws the chess board
 """
-def drawBoard(screen, board, selected, possibleMoves, moveLog):
+def drawBoard(screen, board, selected, possibleMoves, moveLog, attackMap):
 
     for i in range(DIMENSION * DIMENSION):
         rank = int(i / DIMENSION)
         file = i % DIMENSION
-        p.draw.rect(screen, p.Color(238,238,210) if (rank + file) % 2 == 0 else p.Color(118,150,86), p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        if attackMap is not None and attackMap & (1 << i):
+             p.draw.rect(screen, p.Color(255,0,0) , p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        else:
+            p.draw.rect(screen, p.Color(238,238,210) if (rank + file) % 2 == 0 else p.Color(118,150,86), p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         piece = board[i]
         if piece != Piece.EMPTY:
             screen.blit(IMAGES[piece], p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
@@ -93,12 +109,12 @@ def drawBoard(screen, board, selected, possibleMoves, moveLog):
                 p.draw.rect(screen, p.Color(255,255,255), p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
                 if board[square] is not Piece.EMPTY:
                     screen.blit(IMAGES[board[square]], p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-    elif moveLog:
-        lastMove = moveLog[-1]
-        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startSquare % DIMENSION * SQ_SIZE,  (DIMENSION - int(lastMove.startSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        # start square will always be empty
-        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        screen.blit(IMAGES[board[lastMove.endSquare]], p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    # elif moveLog:
+    #     lastMove = moveLog[-1]
+    #     p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startSquare % DIMENSION * SQ_SIZE,  (DIMENSION - int(lastMove.startSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    #     # start square will always be empty
+    #     p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    #     screen.blit(IMAGES[board[lastMove.endSquare]], p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
 if __name__ == "__main__":
     main()

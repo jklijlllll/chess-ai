@@ -12,4 +12,8 @@ class Move:
         NONE = 0
         PAWN_TWO_FORWARD = 1
         EN_PASSANT = 2
+        PROMOTE_KNIGHT = 3
+        PROMOTE_BISHOP = 4
+        PROMOTE_ROOK = 5
+        PROMOTE_QUEEN = 6
         

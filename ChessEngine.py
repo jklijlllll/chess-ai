@@ -1,14 +1,15 @@
 import Classes.Piece as Piece
 from Classes.Move import Move
+from bitmap import BitMap
 
 """
 Defines the current game state (piece placement, current turn, and move log)
 """
+# TODO: add attack bitboard to determine check/checkmate
 
 class GameState():
     START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
     directions = [8, -8, -1, 1, 7, -7, 9, -9 ]
-    pawnDirections = [[8, 7, 9],[-8, -7, -9]]
     knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
 
     def __init__(self) -> None: 
@@ -16,11 +17,21 @@ class GameState():
         self.whiteToMove = True
         self.moveLog = []
         self.selected = None
-        self.set_state(self.START_POSITION)
+        
+        initPieceLists = [None if Piece.is_same_type(p, Piece.KING) else [] for p in Piece.pieces]
+        self.pieceLists = dict(zip(Piece.pieces, initPieceLists))
 
         numsSquaresToEdge = [[0] * 8 for i in range(64)]
         knightMoves = [[0] * 8 for i in range(64)]
         kingMoves = [[0] * 8 for i in range(64)]
+        pawnWhiteAttacks = [[0] * 8 for i in range(64)]
+        pawnBlackAttacks = [[0] * 8 for i in range(64)]
+
+        knightAttackMaps = [0 for i in range(64)]
+        kingAttackMaps = [0 for i in range(64)]
+        pawnWhiteAttackMaps = [0 for i in range(64)] 
+        pawnBlackAttackMaps = [0 for i in range(64)]
+
         for i in range(len(self.board)):
             rank = int(i / 8)
             file = i % 8
@@ -41,6 +52,7 @@ class GameState():
                 ]
 
             knightSquares = []
+            knightAttacks = 0
             for j in range(len(self.knightDirections)):
                 endSquare = i + self.knightDirections[j]
                 if self.within_board(endSquare):
@@ -52,9 +64,13 @@ class GameState():
                 
                     if maxDistance == 2:
                         knightSquares.append(self.knightDirections[j])
+                        knightAttacks |= 1 << endSquare
+
             knightMoves[i] = knightSquares
+            knightAttackMaps[i] = knightAttacks
 
             kingSquares = []
+            kingAttacks = 0
             for k in range(len(self.directions)):
                 endSquare = i + self.directions[k]
                 if self.within_board(endSquare):
@@ -66,14 +82,53 @@ class GameState():
                 
                     if maxDistance == 1:
                         kingSquares.append(self.directions[k])
+                        kingAttacks |= 1 << endSquare
+
             kingMoves[i] = kingSquares
+            kingAttackMaps[i] = kingAttacks
+
+            whitePawnAttacks = 0
+            whitePawnSquares = []
+            blackPawnAttacks = 0
+            blackPawnSquares = []
+
+            if rank > 0:
+                if file > 0:
+                    blackPawnAttacks |= 1 << i - 9
+                    blackPawnSquares.append(i - 9)
+                if file < 7:
+                    blackPawnAttacks |= 1 << i - 7
+                    blackPawnSquares.append(i - 7)
+            if rank < 7:
+                if file > 0:
+                    whitePawnAttacks |= 1 << i + 7
+                    whitePawnSquares.append(i + 7)
+                if file < 7:
+                    whitePawnAttacks |= 1 << i + 9
+                    whitePawnSquares.append(i + 9)
+            
+            pawnWhiteAttacks[i] = whitePawnSquares
+            pawnWhiteAttackMaps[i] = whitePawnAttacks
+            pawnBlackAttacks[i] = blackPawnSquares
+            pawnBlackAttackMaps[i] = blackPawnAttacks
 
         self.numSquaresToEdge = numsSquaresToEdge
         self.knightMoves = knightMoves
         self.kingMoves = kingMoves
+        self.knightAttackMaps = knightAttackMaps
+        self.kingAttackMaps = kingAttackMaps
+        self.pawnWhiteAttacks = pawnWhiteAttacks
+        self.pawnBlackAttacks = pawnBlackAttacks
+        self.pawnWhiteAttackMaps = pawnWhiteAttackMaps
+        self.pawnBlackAttackMaps = pawnBlackAttackMaps
 
         self.enPassantSquare = None
         self.possibleMoves = []
+
+        # TODO: add fen position input with default start position
+        self.set_state(self.START_POSITION)
+        self.opponentAttackMap = 0
+        self.generate_attack_map()
     
     def set_state(self, record: str) -> None:
         
@@ -87,7 +142,14 @@ class GameState():
         for i in range(len(placement)):
             for piece in reversed(placement[i]):
                 if piece in pieceDict:
-                    self.board[square] = pieceDict[piece]
+                    pieceType = pieceDict[piece]
+                    self.board[square] = pieceType
+
+                    if pieceType is Piece.WHITE_KING or pieceType is Piece.BLACK_KING:
+                        self.pieceLists[pieceType] = square
+                    else:
+                        self.pieceLists[pieceType].append(square)
+                        
                     square -= 1
                 if piece.isnumeric():
                     for k in range(int(piece)):
@@ -101,6 +163,38 @@ class GameState():
         # En passant target square
         # Halfmove clock
         # Fullmove clock
+
+    def generate_attack_map(self):
+        
+        self.opponentAttackMap = 0
+        opponentColor = Piece.BLACK if self.whiteToMove else Piece.WHITE
+        
+        for rook in self.pieceLists[opponentColor | Piece.ROOK]:
+            self.generate_sliding_attacks(rook, 0, 4)
+
+        for bishop in self.pieceLists[opponentColor | Piece.BISHOP]:
+            self.generate_sliding_attacks(bishop, 4, 8)
+        
+        for queen in self.pieceLists[opponentColor | Piece.QUEEN]:
+            self.generate_sliding_attacks(queen, 0, 8)
+
+        for knight in self.pieceLists[opponentColor | Piece.KNIGHT]:
+            self.opponentAttackMap |= self.knightAttackMaps[knight]
+
+        pawnAttackMap = self.pawnBlackAttackMaps if self.whiteToMove else self.pawnWhiteAttackMaps
+        for pawn in self.pieceLists[opponentColor | Piece.PAWN]:
+            self.opponentAttackMap |= pawnAttackMap[pawn]
+
+        self.opponentAttackMap |= self.kingAttackMaps[self.pieceLists[opponentColor | Piece.KING]]
+
+    def generate_sliding_attacks(self, startSquare: int, startIndex: int, endIndex: int):
+        
+        for dir in range(startIndex, endIndex):
+             for num in range(self.numSquaresToEdge[startSquare][dir]):
+                endSquare = startSquare + (num + 1) * self.directions[dir]
+                self.opponentAttackMap |= 1 << endSquare
+                if self.board[endSquare] is not Piece.EMPTY:
+                    break
 
     def get_rank(self, square: int):
         return int(square / 8) 
@@ -134,31 +228,42 @@ class GameState():
                 endSquare = startSquare + (num + 1) * self.directions[dir]
                 if self.board[endSquare] is Piece.EMPTY:
                     self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
-                elif not Piece.is_same_color(piece, self.board[endSquare]):
-                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
+                else:
+                    if not Piece.is_same_color(piece, self.board[endSquare]):
+                        self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
                     break
+                
 
     def generate_pawn_moves(self, startSquare: int, piece: int):
-        # TODO: add en passant moves
         # TODO: add promotion
-        dir = self.pawnDirections[0] if Piece.is_white(piece) else self.pawnDirections[1]
-        pawnStartRank = 1 if Piece.is_white(piece) else 6
-       
-        endSquare = startSquare + dir[0]
+
+        if Piece.is_white(piece):
+            dir = self.directions[0] 
+            pawnStartRank = 1 
+            pawnAttacks = self.pawnWhiteAttacks
+        else:
+            dir = self.directions[1]
+            pawnStartRank = 6
+            pawnAttacks = self.pawnBlackAttacks
+
+        # check if pawn is pushable
+        endSquare = startSquare + dir
         if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY:
             self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
-            if self.get_rank(startSquare) == pawnStartRank and self.within_board(endSquare + dir[0])  and self.board[endSquare] is Piece.EMPTY:
-                self.possibleMoves.append(Move(startSquare, endSquare + dir[0], piece, self.board[endSquare + dir[0]], Move.Flag.PAWN_TWO_FORWARD))
+            if self.get_rank(startSquare) == pawnStartRank and self.board[endSquare] is Piece.EMPTY:
+                self.possibleMoves.append(Move(startSquare, endSquare + dir, piece, self.board[endSquare + dir], Move.Flag.PAWN_TWO_FORWARD))
 
-        for i in range(1, len(dir)):
-            endSquare = startSquare + dir[i]
-            if self.within_board(endSquare) and self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
+        # check for pawn captures
+        for i in range(len(pawnAttacks[startSquare])):
+            endSquare = pawnAttacks[startSquare][i]
+            if self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
                 self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
 
+        # check for en passant
         if self.moveLog:
             lastMove = self.moveLog[-1]
             if lastMove.flag is Move.Flag.PAWN_TWO_FORWARD and not Piece.is_same_color(piece, lastMove.startPiece):
-                direction = -8 if Piece.is_white(lastMove.startPiece) else 8
+                direction = -dir
                
                 if lastMove.endSquare is startSquare + 1 or lastMove.endSquare is startSquare - 1:
                     self.possibleMoves.append(Move(startSquare, lastMove.endSquare + direction, piece, self.board[lastMove.endSquare + direction], Move.Flag.EN_PASSANT))
