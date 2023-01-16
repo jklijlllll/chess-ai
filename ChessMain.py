@@ -43,9 +43,12 @@ def main():
                     move = next((m for m in game_state.possibleMoves if m.endSquare is square), None)
 
                     if move is not None:
-
+                        
                         pieceList = game_state.pieceLists[move.startPiece]
-                        pieceList[pieceList.index(move.startSquare)] = square
+                        if Piece.is_same_type(Piece.KING, move.startPiece):
+                            pieceList = square
+                        else:
+                            pieceList[pieceList.index(move.startSquare)] = square
                         
                         if piece is not Piece.EMPTY:
                             game_state.pieceLists[piece].remove(square)
@@ -53,11 +56,64 @@ def main():
                         game_state.board[game_state.selected.square] = Piece.EMPTY
                         game_state.board[square] = game_state.selected.piece
 
-                        if move.flag is Move.Flag.EN_PASSANT:
+                        if move.flag == Move.Flag.EN_PASSANT:
                             game_state.pieceLists[game_state.board[game_state.enPassantSquare]].remove(game_state.enPassantSquare)
 
                             game_state.board[game_state.enPassantSquare] = Piece.EMPTY
                             game_state.enPassantSquare = None
+
+                        if move.startPiece is Piece.BLACK_ROOK:
+                            if move.startSquare == 56:
+                                game_state.blackQueenSideCastle = False
+                            if move.startSquare == 63:
+                                game_state.blackKingSideCastle = False
+
+                        if move.endPiece is Piece.BLACK_ROOK:
+                            if move.endSquare == 56:
+                                game_state.blackQueenSideCastle = False
+                            if move.endSquare == 63:
+                                game_state.blackKingSideCastle = False
+
+                        if move.startPiece is Piece.WHITE_ROOK:
+                            if move.startSquare == 0:
+                                game_state.whiteQueenSideCastle = False
+                            if move.startSquare == 7:
+                                game_state.whiteKingSideCastle = False
+
+                        if move.endPiece is Piece.WHITE_ROOK:
+                            if move.endSquare == 0:
+                                game_state.whiteQueenSideCastle = False
+                            if move.endSquare == 7:
+                                game_state.whiteKingSideCastle = False
+
+                        if move.flag is Move.Flag.CASTLE:
+                            if move.startSquare == 4:
+                                rooksList = game_state.pieceLists[Piece.WHITE_ROOK]
+                                game_state.whiteKingSideCastle = False
+                                game_state.whiteQueenSideCastle = False
+
+                                if move.startSquare < move.endSquare:
+                                    rooksList[rooksList.index(7)] = 5
+                                    game_state.board[7] = Piece.EMPTY
+                                    game_state.board[5] = Piece.WHITE_ROOK
+                                else:
+                                    rooksList[rooksList.index(0)] = 3
+                                    game_state.board[0] = Piece.EMPTY
+                                    game_state.board[3] = Piece.WHITE_ROOK
+
+                            else:
+                                rooksList = game_state.pieceLists[Piece.BLACK_ROOK]
+                                game_state.blackKingSideCastle = False
+                                game_state.blackQueenSideCastle = False
+
+                                if move.startSquare < move.endSquare:
+                                    rooksList[rooksList.index(63)] = 61
+                                    game_state.board[63] = Piece.EMPTY
+                                    game_state.board[61] = Piece.BLACK_ROOK
+                                else:
+                                    rooksList[rooksList.index(56)] = 59
+                                    game_state.board[56] = Piece.EMPTY
+                                    game_state.board[59] = Piece.BLACK_ROOK
 
                         game_state.moveLog.append(move)
                         game_state.whiteToMove = not game_state.whiteToMove
@@ -92,10 +148,9 @@ def drawBoard(screen, board, selected, possibleMoves, moveLog, attackMap):
     for i in range(DIMENSION * DIMENSION):
         rank = int(i / DIMENSION)
         file = i % DIMENSION
-        if attackMap is not None and attackMap & (1 << i):
-             p.draw.rect(screen, p.Color(255,0,0) , p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        else:
-            p.draw.rect(screen, p.Color(238,238,210) if (rank + file) % 2 == 0 else p.Color(118,150,86), p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        # if attackMap is not None and attackMap & (1 << i):
+        #      p.draw.rect(screen, p.Color(255,0,0) , p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        p.draw.rect(screen, p.Color(238,238,210) if (rank + file) % 2 == 0 else p.Color(118,150,86), p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         piece = board[i]
         if piece != Piece.EMPTY:
             screen.blit(IMAGES[piece], p.Rect(file * SQ_SIZE, (DIMENSION - rank - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
@@ -109,12 +164,12 @@ def drawBoard(screen, board, selected, possibleMoves, moveLog, attackMap):
                 p.draw.rect(screen, p.Color(255,255,255), p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
                 if board[square] is not Piece.EMPTY:
                     screen.blit(IMAGES[board[square]], p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-    # elif moveLog:
-    #     lastMove = moveLog[-1]
-    #     p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startSquare % DIMENSION * SQ_SIZE,  (DIMENSION - int(lastMove.startSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-    #     # start square will always be empty
-    #     p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-    #     screen.blit(IMAGES[board[lastMove.endSquare]], p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
+    elif moveLog:
+        lastMove = moveLog[-1]
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.startSquare % DIMENSION * SQ_SIZE,  (DIMENSION - int(lastMove.startSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        # start square will always be empty
+        p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
+        screen.blit(IMAGES[board[lastMove.endSquare]], p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
 if __name__ == "__main__":
     main()

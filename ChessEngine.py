@@ -122,6 +122,11 @@ class GameState():
         self.pawnWhiteAttackMaps = pawnWhiteAttackMaps
         self.pawnBlackAttackMaps = pawnBlackAttackMaps
 
+        self.whiteKingSideCastle = True
+        self.whiteQueenSideCastle = True
+        self.blackKingSideCastle = True
+        self.blackQueenSideCastle = True
+
         self.enPassantSquare = None
         self.possibleMoves = []
 
@@ -206,7 +211,7 @@ class GameState():
 
         if Piece.is_same_type(piece, Piece.BISHOP) or Piece.is_same_type(piece, Piece.ROOK) or Piece.is_same_type(piece, Piece.QUEEN):
             self.generate_sliding_moves(startSquare, piece)
-        
+
         elif Piece.is_same_type(piece, Piece.PAWN):
             self.generate_pawn_moves(startSquare, piece)
 
@@ -216,8 +221,6 @@ class GameState():
         elif Piece.is_same_type(piece, Piece.KNIGHT):
             self.generate_knight_moves(startSquare, piece)
 
-
-    # TODO: add castling
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
         startIndex = 4 if Piece.is_same_type(piece, Piece.BISHOP) else 0
@@ -232,8 +235,7 @@ class GameState():
                     if not Piece.is_same_color(piece, self.board[endSquare]):
                         self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
                     break
-                
-
+   
     def generate_pawn_moves(self, startSquare: int, piece: int):
         # TODO: add promotion
 
@@ -288,5 +290,37 @@ class GameState():
                 self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
             elif not Piece.is_same_color(piece, target):
                 self.possibleMoves.append(Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
+
+        if self.whiteToMove:
+            if startSquare != 4:
+                return
+
+            if self.whiteQueenSideCastle and not self.opponentAttackMap & (1 << 2):
+                for i in range(3, 0):
+                    if self.board[i] is not Piece.EMPTY:
+                        return
+                self.possibleMoves.append(Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+            if self.whiteKingSideCastle and not self.opponentAttackMap & (1 << 6):
+                for i in range(5, 7):
+                    if self.board[i] is not Piece.EMPTY:
+                        return
+                self.possibleMoves.append(Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+        else:
+            if startSquare != 60:
+                return
+
+            if self.blackQueenSideCastle and not self.opponentAttackMap & (1 << 58):
+                for i in range(59, 56):
+                    if self.board[i] is not Piece.EMPTY:
+                        return
+                self.possibleMoves.append(Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+            if self.blackKingSideCastle and not self.opponentAttackMap & (1 << 62):
+                for i in range(61, 63):
+                    if self.board[i] is not Piece.EMPTY:
+                        return
+                self.possibleMoves.append(Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
         

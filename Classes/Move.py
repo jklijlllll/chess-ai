@@ -16,4 +16,5 @@ class Move:
         PROMOTE_BISHOP = 4
         PROMOTE_ROOK = 5
         PROMOTE_QUEEN = 6
+        CASTLE = 7
         
