@@ -43,18 +43,18 @@ def main():
                     move = next((m for m in game_state.possibleMoves if m.endSquare is square), None)
 
                     if move is not None:
-                        
+ 
                         pieceList = game_state.pieceLists[move.startPiece]
                         if Piece.is_same_type(Piece.KING, move.startPiece):
-                            pieceList = square
+                            pieceList = move.endSquare
                         else:
-                            pieceList[pieceList.index(move.startSquare)] = square
+                            pieceList[pieceList.index(move.startSquare)] = move.endSquare
                         
                         if piece is not Piece.EMPTY:
-                            game_state.pieceLists[piece].remove(square)
+                            game_state.pieceLists[piece].remove(move.endSquare)
 
                         game_state.board[game_state.selected.square] = Piece.EMPTY
-                        game_state.board[square] = game_state.selected.piece
+                        game_state.board[move.endSquare] = game_state.selected.piece
 
                         if move.flag == Move.Flag.EN_PASSANT:
                             game_state.pieceLists[game_state.board[game_state.enPassantSquare]].remove(game_state.enPassantSquare)
@@ -114,6 +114,35 @@ def main():
                                     rooksList[rooksList.index(56)] = 59
                                     game_state.board[56] = Piece.EMPTY
                                     game_state.board[59] = Piece.BLACK_ROOK
+
+                        if move.flag in {Move.Flag.PROMOTE_KNIGHT, Move.Flag.PROMOTE_BISHOP, Move.Flag.PROMOTE_ROOK, Move.Flag.PROMOTE_QUEEN}:
+                            while running:
+                                promoteInput = input("Promote pawn (k, b, r, q): ")
+                                
+                                if promoteInput == "k":
+                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_KNIGHT and m.endSquare is square), None)
+                                    promotePiece = Piece.KNIGHT
+                                    promote = True
+                                if  promoteInput == "b":
+                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_BISHOP and m.endSquare is square), None)
+                                    promotePiece = Piece.BISHOP
+                                    promote = True
+                                if  promoteInput == "r":
+                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_ROOK and m.endSquare is square), None)
+                                    promotePiece = Piece.ROOK
+                                    promote = True
+                                if  promoteInput == "q":
+                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_QUEEN and m.endSquare is square), None)
+                                    promotePiece = Piece.QUEEN
+                                    promote = True
+
+                                if promote:
+                                    game_state.pieceLists[move.startPiece].remove(move.endSquare)
+                                    color = Piece.WHITE if Piece.is_white(move.startPiece) else Piece.BLACK
+ 
+                                    game_state.pieceLists[color | promotePiece].append(move.endSquare)
+                                    game_state.board[move.endSquare] = color | promotePiece
+                                    break
 
                         game_state.moveLog.append(move)
                         game_state.whiteToMove = not game_state.whiteToMove

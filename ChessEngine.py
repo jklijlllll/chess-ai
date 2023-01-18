@@ -243,23 +243,38 @@ class GameState():
             dir = self.directions[0] 
             pawnStartRank = 1 
             pawnAttacks = self.pawnWhiteAttacks
+            promoteRank = 7
         else:
             dir = self.directions[1]
             pawnStartRank = 6
             pawnAttacks = self.pawnBlackAttacks
+            promoteRank = 0
 
         # check if pawn is pushable
         endSquare = startSquare + dir
         if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY:
-            self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
-            if self.get_rank(startSquare) == pawnStartRank and self.board[endSquare] is Piece.EMPTY:
-                self.possibleMoves.append(Move(startSquare, endSquare + dir, piece, self.board[endSquare + dir], Move.Flag.PAWN_TWO_FORWARD))
+            
+            if self.get_rank(endSquare) == promoteRank:
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_KNIGHT))
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_BISHOP))
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_ROOK))
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_QUEEN))
+            else:            
+                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
+                if self.get_rank(startSquare) == pawnStartRank and self.board[endSquare] is Piece.EMPTY:
+                    self.possibleMoves.append(Move(startSquare, endSquare + dir, piece, self.board[endSquare + dir], Move.Flag.PAWN_TWO_FORWARD))
 
         # check for pawn captures
         for i in range(len(pawnAttacks[startSquare])):
             endSquare = pawnAttacks[startSquare][i]
             if self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]):
-                self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
+                if self.get_rank(endSquare) == promoteRank:
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_KNIGHT))
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_BISHOP))
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_ROOK))
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.PROMOTE_QUEEN))
+                else:
+                    self.possibleMoves.append(Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
 
         # check for en passant
         if self.moveLog:
