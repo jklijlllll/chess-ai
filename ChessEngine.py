@@ -5,7 +5,6 @@ from bitmap import BitMap
 """
 Defines the current game state (piece placement, current turn, and move log)
 """
-# TODO: add attack bitboard to determine check/checkmate
 
 class GameState():
     START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -129,11 +128,12 @@ class GameState():
 
         self.enPassantSquare = None
         self.possibleMoves = []
+        self.selectedMoves = []
 
         # TODO: add fen position input with default start position
         self.set_state(self.START_POSITION)
         self.opponentAttackMap = 0
-        self.generate_attack_map()
+        self.generate_moves()
     
     def set_state(self, record: str) -> None:
         
@@ -169,6 +169,7 @@ class GameState():
         # Halfmove clock
         # Fullmove clock
 
+    # TODO: check for pins and checkmate
     def generate_attack_map(self):
         
         self.opponentAttackMap = 0
@@ -207,19 +208,27 @@ class GameState():
     def within_board(self, square: int):
         return 0 <= square < 64
 
-    def generate_move(self, startSquare: int, piece: int):
+    def generate_moves(self):
 
-        if Piece.is_same_type(piece, Piece.BISHOP) or Piece.is_same_type(piece, Piece.ROOK) or Piece.is_same_type(piece, Piece.QUEEN):
-            self.generate_sliding_moves(startSquare, piece)
-
-        elif Piece.is_same_type(piece, Piece.PAWN):
-            self.generate_pawn_moves(startSquare, piece)
-
-        elif Piece.is_same_type(piece, Piece.KING):
-            self.generate_king_moves(startSquare, piece)
+        currentColor = Piece.WHITE if self.whiteToMove else Piece.BLACK
         
-        elif Piece.is_same_type(piece, Piece.KNIGHT):
-            self.generate_knight_moves(startSquare, piece)
+        self.generate_attack_map()
+        self.generate_king_moves(self.pieceLists[currentColor | Piece.KING], currentColor | Piece.KING)
+
+        for pawn in self.pieceLists[currentColor | Piece.PAWN]:
+            self.generate_pawn_moves(pawn, currentColor | Piece.PAWN)
+
+        for knight in self.pieceLists[currentColor | Piece.KNIGHT]:
+            self.generate_knight_moves(knight, currentColor | Piece.KNIGHT)
+
+        for bishop in self.pieceLists[currentColor | Piece.BISHOP]:
+            self.generate_sliding_moves(bishop, currentColor | Piece.BISHOP)
+
+        for rook in self.pieceLists[currentColor | Piece.ROOK]:
+            self.generate_sliding_moves(rook, currentColor | Piece.ROOK)
+
+        for queen in self.pieceLists[currentColor | Piece.QUEEN]:
+            self.generate_sliding_moves(queen, currentColor | Piece.QUEEN)
 
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
@@ -237,7 +246,6 @@ class GameState():
                     break
    
     def generate_pawn_moves(self, startSquare: int, piece: int):
-        # TODO: add promotion
 
         if Piece.is_white(piece):
             dir = self.directions[0] 
@@ -337,5 +345,6 @@ class GameState():
                     if self.board[i] is not Piece.EMPTY:
                         return
                 self.possibleMoves.append(Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
 
         

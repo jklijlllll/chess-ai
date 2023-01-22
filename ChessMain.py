@@ -36,11 +36,13 @@ def main():
         for e in p.event.get():
             if e.type == p.QUIT:
                 running = False
-            if e.type == p.MOUSEBUTTONDOWN:
+            if game_state.whiteToMove and e.type == p.MOUSEBUTTONDOWN:
                 square = int((HEIGHT - p.mouse.get_pos()[1] )/ SQ_SIZE) * DIMENSION + int(p.mouse.get_pos()[0] /SQ_SIZE)
                 piece = game_state.board[square]
+                
                 if game_state.selected is not None:
-                    move = next((m for m in game_state.possibleMoves if m.endSquare is square), None)
+                    
+                    move = next((m for m in game_state.selectedMoves if m.endSquare is square), None)
 
                     if move is not None:
  
@@ -120,19 +122,19 @@ def main():
                                 promoteInput = input("Promote pawn (k, b, r, q): ")
                                 
                                 if promoteInput == "k":
-                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_KNIGHT and m.endSquare is square), None)
+                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_KNIGHT and m.endSquare is square), None)
                                     promotePiece = Piece.KNIGHT
                                     promote = True
                                 if  promoteInput == "b":
-                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_BISHOP and m.endSquare is square), None)
+                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_BISHOP and m.endSquare is square), None)
                                     promotePiece = Piece.BISHOP
                                     promote = True
                                 if  promoteInput == "r":
-                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_ROOK and m.endSquare is square), None)
+                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_ROOK and m.endSquare is square), None)
                                     promotePiece = Piece.ROOK
                                     promote = True
                                 if  promoteInput == "q":
-                                    move = next((m for m in game_state.possibleMoves if m.flag is Move.Flag.PROMOTE_QUEEN and m.endSquare is square), None)
+                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_QUEEN and m.endSquare is square), None)
                                     promotePiece = Piece.QUEEN
                                     promote = True
 
@@ -145,20 +147,24 @@ def main():
                                     break
 
                         game_state.moveLog.append(move)
-                        game_state.whiteToMove = not game_state.whiteToMove
+                        game_state.whiteToMove = True
 
                     game_state.selected = None
                     game_state.possibleMoves = []
-                    game_state.generate_attack_map()
-                    if game_state.opponentAttackMap & (1 << game_state.pieceLists[(Piece.WHITE if game_state.whiteToMove else Piece.BLACK) | Piece.KING]):
-                        print("check")
+                    game_state.generate_moves()
+                    # if game_state.opponentAttackMap & (1 << game_state.pieceLists[(Piece.WHITE if game_state.whiteToMove else Piece.BLACK) | Piece.KING]):
+                    #     print("check")
                 else:
                     if piece is not Piece.EMPTY and game_state.whiteToMove is Piece.is_white(piece):
                         game_state.selected = Selected(square, piece)
-                        game_state.generate_move(square, piece)
+                        game_state.selectedMoves = [m for m in game_state.possibleMoves if m.startSquare == square]
                     else:
                         game_state.selected = None
-                        
+                        game_state.selectedMoves = []
+        
+        if not game_state.whiteToMove:
+            game_state.whiteToMove = False
+            
         drawGameState(screen, game_state)
         clock.tick(MAX_FPS)
         p.display.flip()
@@ -167,12 +173,12 @@ def main():
 Draws all the graphics within the current game state
 """
 def drawGameState(screen, game_state):
-    drawBoard(screen, game_state.board, game_state.selected, game_state.possibleMoves , game_state.moveLog, game_state.opponentAttackMap)
+    drawBoard(screen, game_state.board, game_state.selected, game_state.selectedMoves , game_state.moveLog, game_state.opponentAttackMap)
 
 """
 Draws the chess board
 """
-def drawBoard(screen, board, selected, possibleMoves, moveLog, attackMap):
+def drawBoard(screen, board, selected, selectedMoves, moveLog, attackMap):
 
     for i in range(DIMENSION * DIMENSION):
         rank = int(i / DIMENSION)
@@ -187,9 +193,10 @@ def drawBoard(screen, board, selected, possibleMoves, moveLog, attackMap):
     if selected is not None:
         p.draw.rect(screen, p.Color(186,202,68), p.Rect(selected.square % DIMENSION * SQ_SIZE, (DIMENSION - int(selected.square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         screen.blit(IMAGES[selected.piece], p.Rect(selected.square % DIMENSION * SQ_SIZE, (DIMENSION - int(selected.square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
-        if possibleMoves is not None:
-            for i in range(len(possibleMoves)):
-                square = possibleMoves[i].endSquare     
+
+        if selectedMoves is not None:
+            for i in range(len(selectedMoves)):
+                square = selectedMoves[i].endSquare     
                 p.draw.rect(screen, p.Color(255,255,255), p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
                 if board[square] is not Piece.EMPTY:
                     screen.blit(IMAGES[board[square]], p.Rect(square % DIMENSION * SQ_SIZE, (DIMENSION - int(square / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
