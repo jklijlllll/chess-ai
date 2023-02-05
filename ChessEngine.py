@@ -129,10 +129,16 @@ class GameState():
         self.enPassantSquare = None
         self.possibleMoves = []
         self.selectedMoves = []
+        self.inCheck = False
+        self.inDoubleCheck = False
+        
+        self.promoteSquare = None
 
         # TODO: add fen position input with default start position
         self.set_state(self.START_POSITION)
         self.opponentAttackMap = 0
+        self.pinnedMap = 0
+        self.outOfCheckMap = 0
         self.generate_moves()
     
     def set_state(self, record: str) -> None:
@@ -192,6 +198,11 @@ class GameState():
             self.opponentAttackMap |= pawnAttackMap[pawn]
 
         self.opponentAttackMap |= self.kingAttackMaps[self.pieceLists[opponentColor | Piece.KING]]
+
+                    
+    def generate_attack_data(self):
+        # TODO: calculate check/double check, pin/outofcheck map from king square
+        pass
 
     def generate_sliding_attacks(self, startSquare: int, startIndex: int, endIndex: int):
         
@@ -319,7 +330,7 @@ class GameState():
                 return
 
             if self.whiteQueenSideCastle and not self.opponentAttackMap & (1 << 2):
-                for i in range(3, 0):
+                for i in range(1, 4):
                     if self.board[i] is not Piece.EMPTY:
                         return
                 self.possibleMoves.append(Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
@@ -335,7 +346,7 @@ class GameState():
                 return
 
             if self.blackQueenSideCastle and not self.opponentAttackMap & (1 << 58):
-                for i in range(59, 56):
+                for i in range(57, 60):
                     if self.board[i] is not Piece.EMPTY:
                         return
                 self.possibleMoves.append(Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
@@ -347,4 +358,92 @@ class GameState():
                 self.possibleMoves.append(Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
 
+    def make_move(self, move: Move):
+        pieceList = self.pieceLists[move.startPiece]
+        if Piece.is_same_type(Piece.KING, move.startPiece):
+            self.pieceLists[move.startPiece] = move.endSquare
+        else:
+            pieceList[pieceList.index(move.startSquare)] = move.endSquare
         
+        if move.endPiece is not Piece.EMPTY:
+            self.pieceLists[move.endPiece].remove(move.endSquare)
+
+        self.board[move.startSquare] = Piece.EMPTY
+        self.board[move.endSquare] = move.startPiece
+
+        # En passant
+        if move.flag == Move.Flag.EN_PASSANT:
+            self.pieceLists[self.board[self.enPassantSquare]].remove(self.enPassantSquare)
+
+            self.board[self.enPassantSquare] = Piece.EMPTY
+            self.enPassantSquare = None
+
+        # Castling rights
+        if move.startPiece is Piece.BLACK_ROOK:
+            if move.startSquare == 56:
+                self.blackQueenSideCastle = False
+            if move.startSquare == 63:
+                self.blackKingSideCastle = False
+
+        if move.endPiece is Piece.BLACK_ROOK:
+            if move.endSquare == 56:
+                self.blackQueenSideCastle = False
+            if move.endSquare == 63:
+                self.blackKingSideCastle = False
+
+        if move.startPiece is Piece.WHITE_ROOK:
+            if move.startSquare == 0:
+                self.whiteQueenSideCastle = False
+            if move.startSquare == 7:
+                self.whiteKingSideCastle = False
+
+        if move.endPiece is Piece.WHITE_ROOK:
+            if move.endSquare == 0:
+                self.whiteQueenSideCastle = False
+            if move.endSquare == 7:
+                self.whiteKingSideCastle = False
+
+        # Castling
+        if move.flag is Move.Flag.CASTLE:
+            if move.startSquare == 4:
+                rooksList = self.pieceLists[Piece.WHITE_ROOK]
+                self.whiteKingSideCastle = False
+                self.whiteQueenSideCastle = False
+
+                if move.startSquare < move.endSquare:
+                    rooksList[rooksList.index(7)] = 5
+                    self.board[7] = Piece.EMPTY
+                    self.board[5] = Piece.WHITE_ROOK
+                else:
+                    rooksList[rooksList.index(0)] = 3
+                    self.board[0] = Piece.EMPTY
+                    self.board[3] = Piece.WHITE_ROOK
+
+            else:
+                rooksList = self.pieceLists[Piece.BLACK_ROOK]
+                self.blackKingSideCastle = False
+                self.blackQueenSideCastle = False
+
+                if move.startSquare < move.endSquare:
+                    rooksList[rooksList.index(63)] = 61
+                    self.board[63] = Piece.EMPTY
+                    self.board[61] = Piece.BLACK_ROOK
+                else:
+                    rooksList[rooksList.index(56)] = 59
+                    self.board[56] = Piece.EMPTY
+                    self.board[59] = Piece.BLACK_ROOK
+
+        # Promotion
+        if move.flag in {Move.Flag.PROMOTE_KNIGHT, Move.Flag.PROMOTE_BISHOP, Move.Flag.PROMOTE_ROOK, Move.Flag.PROMOTE_QUEEN}:
+
+            self.pieceLists[move.startPiece].remove(move.endSquare)
+            color = Piece.WHITE if Piece.is_white(move.startPiece) else Piece.BLACK
+
+            promotePiece = int(move.flag)
+            self.pieceLists[color | promotePiece].append(move.endSquare)
+            self.board[move.endSquare] = color | promotePiece
+               
+        self.moveLog.append(move)
+        self.whiteToMove = not self.whiteToMove
+
+    # TODO: unmake move function

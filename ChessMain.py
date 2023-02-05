@@ -1,14 +1,20 @@
 import pygame as p
+import pygame_menu as pm
 import ChessEngine
 import Classes.Piece as Piece
-from Classes.Move import Move
 from Classes.Selected import Selected
+from Classes.Move import Move
+import random
 
 WIDTH = HEIGHT = 512
 DIMENSION = 8
 SQ_SIZE = WIDTH // DIMENSION
 MAX_FPS = 15
 IMAGES = {}
+
+PROMOTE_MOVE_FLAG = Move.Flag.NONE
+PROMOTE_SELECT = False
+PROMOTE_MOUSE_OVER = False
 
 """
 Loads piece images
@@ -23,20 +29,30 @@ def loadImages():
 """
 Handles user input and graphics updates
 """
+# TODO: refactor whiteToMove to piece color
 def main():
     p.init()
     screen = p.display.set_mode((WIDTH, HEIGHT))
     clock = p.time.Clock()
     screen.fill(p.Color("white"))
+    menuTheme = pm.Theme(background_color=p.Color(255, 255, 255), title=False, selection_color=p.Color(0, 0, 0))
+    whitePromoteMenu = pm.Menu("", width= SQ_SIZE, height= SQ_SIZE * 4, theme=menuTheme, overflow=(False, False), keyboard_enabled=False, enabled=False)
+    
     game_state = ChessEngine.GameState()
     loadImages()
-    running = True
+    initPromoteMenu(whitePromoteMenu, "w")
+    promoteMove = None
+    global PROMOTE_MOUSE_OVER
     
+    running = True
+
     while running:
-        for e in p.event.get():
+        
+        events = p.event.get()
+        for e in events:
             if e.type == p.QUIT:
                 running = False
-            if game_state.whiteToMove and e.type == p.MOUSEBUTTONDOWN:
+            if e.type == p.MOUSEBUTTONDOWN:
                 square = int((HEIGHT - p.mouse.get_pos()[1] )/ SQ_SIZE) * DIMENSION + int(p.mouse.get_pos()[0] /SQ_SIZE)
                 piece = game_state.board[square]
                 
@@ -45,113 +61,24 @@ def main():
                     move = next((m for m in game_state.selectedMoves if m.endSquare is square), None)
 
                     if move is not None:
- 
-                        pieceList = game_state.pieceLists[move.startPiece]
-                        if Piece.is_same_type(Piece.KING, move.startPiece):
-                            pieceList = move.endSquare
+                        if move.flag not in {Move.Flag.PROMOTE_KNIGHT, Move.Flag.PROMOTE_BISHOP, Move.Flag.PROMOTE_ROOK, Move.Flag.PROMOTE_QUEEN}:
+                            game_state.make_move(move)
                         else:
-                            pieceList[pieceList.index(move.startSquare)] = move.endSquare
+                            promoteMove = move
+                            game_state.promoteSquare = promoteMove.endSquare
+                    
+                    if game_state.promoteSquare is None:
+                        game_state.selected = None
+                        game_state.possibleMoves = []
+                        game_state.generate_moves()
+                    else:
+                        x = game_state.promoteSquare % 8 * SQ_SIZE
+                        y = (63 - game_state.promoteSquare) / 8 * SQ_SIZE
+                        if game_state.whiteToMove:
+                            whitePromoteMenu.set_absolute_position(x, y)
+                            whitePromoteMenu.enable()
+                            PROMOTE_MOUSE_OVER = True if whitePromoteMenu.get_mouseover_widget() is not None else False
                         
-                        if piece is not Piece.EMPTY:
-                            game_state.pieceLists[piece].remove(move.endSquare)
-
-                        game_state.board[game_state.selected.square] = Piece.EMPTY
-                        game_state.board[move.endSquare] = game_state.selected.piece
-
-                        if move.flag == Move.Flag.EN_PASSANT:
-                            game_state.pieceLists[game_state.board[game_state.enPassantSquare]].remove(game_state.enPassantSquare)
-
-                            game_state.board[game_state.enPassantSquare] = Piece.EMPTY
-                            game_state.enPassantSquare = None
-
-                        if move.startPiece is Piece.BLACK_ROOK:
-                            if move.startSquare == 56:
-                                game_state.blackQueenSideCastle = False
-                            if move.startSquare == 63:
-                                game_state.blackKingSideCastle = False
-
-                        if move.endPiece is Piece.BLACK_ROOK:
-                            if move.endSquare == 56:
-                                game_state.blackQueenSideCastle = False
-                            if move.endSquare == 63:
-                                game_state.blackKingSideCastle = False
-
-                        if move.startPiece is Piece.WHITE_ROOK:
-                            if move.startSquare == 0:
-                                game_state.whiteQueenSideCastle = False
-                            if move.startSquare == 7:
-                                game_state.whiteKingSideCastle = False
-
-                        if move.endPiece is Piece.WHITE_ROOK:
-                            if move.endSquare == 0:
-                                game_state.whiteQueenSideCastle = False
-                            if move.endSquare == 7:
-                                game_state.whiteKingSideCastle = False
-
-                        if move.flag is Move.Flag.CASTLE:
-                            if move.startSquare == 4:
-                                rooksList = game_state.pieceLists[Piece.WHITE_ROOK]
-                                game_state.whiteKingSideCastle = False
-                                game_state.whiteQueenSideCastle = False
-
-                                if move.startSquare < move.endSquare:
-                                    rooksList[rooksList.index(7)] = 5
-                                    game_state.board[7] = Piece.EMPTY
-                                    game_state.board[5] = Piece.WHITE_ROOK
-                                else:
-                                    rooksList[rooksList.index(0)] = 3
-                                    game_state.board[0] = Piece.EMPTY
-                                    game_state.board[3] = Piece.WHITE_ROOK
-
-                            else:
-                                rooksList = game_state.pieceLists[Piece.BLACK_ROOK]
-                                game_state.blackKingSideCastle = False
-                                game_state.blackQueenSideCastle = False
-
-                                if move.startSquare < move.endSquare:
-                                    rooksList[rooksList.index(63)] = 61
-                                    game_state.board[63] = Piece.EMPTY
-                                    game_state.board[61] = Piece.BLACK_ROOK
-                                else:
-                                    rooksList[rooksList.index(56)] = 59
-                                    game_state.board[56] = Piece.EMPTY
-                                    game_state.board[59] = Piece.BLACK_ROOK
-
-                        if move.flag in {Move.Flag.PROMOTE_KNIGHT, Move.Flag.PROMOTE_BISHOP, Move.Flag.PROMOTE_ROOK, Move.Flag.PROMOTE_QUEEN}:
-                            while running:
-                                promoteInput = input("Promote pawn (k, b, r, q): ")
-                                
-                                if promoteInput == "k":
-                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_KNIGHT and m.endSquare is square), None)
-                                    promotePiece = Piece.KNIGHT
-                                    promote = True
-                                if  promoteInput == "b":
-                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_BISHOP and m.endSquare is square), None)
-                                    promotePiece = Piece.BISHOP
-                                    promote = True
-                                if  promoteInput == "r":
-                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_ROOK and m.endSquare is square), None)
-                                    promotePiece = Piece.ROOK
-                                    promote = True
-                                if  promoteInput == "q":
-                                    move = next((m for m in game_state.selectedMoves if m.flag is Move.Flag.PROMOTE_QUEEN and m.endSquare is square), None)
-                                    promotePiece = Piece.QUEEN
-                                    promote = True
-
-                                if promote:
-                                    game_state.pieceLists[move.startPiece].remove(move.endSquare)
-                                    color = Piece.WHITE if Piece.is_white(move.startPiece) else Piece.BLACK
- 
-                                    game_state.pieceLists[color | promotePiece].append(move.endSquare)
-                                    game_state.board[move.endSquare] = color | promotePiece
-                                    break
-
-                        game_state.moveLog.append(move)
-                        game_state.whiteToMove = True
-
-                    game_state.selected = None
-                    game_state.possibleMoves = []
-                    game_state.generate_moves()
                     # if game_state.opponentAttackMap & (1 << game_state.pieceLists[(Piece.WHITE if game_state.whiteToMove else Piece.BLACK) | Piece.KING]):
                     #     print("check")
                 else:
@@ -162,10 +89,37 @@ def main():
                         game_state.selected = None
                         game_state.selectedMoves = []
         
-        if not game_state.whiteToMove:
-            game_state.whiteToMove = False
+        # if not game_state.whiteToMove:
+        #     game_state.make_move(random.choice(game_state.possibleMoves))
+        #     game_state.generate_moves()
             
         drawGameState(screen, game_state)
+
+        # Select promote piece
+        if game_state.promoteSquare is not None:
+            if whitePromoteMenu.is_enabled():
+                whitePromoteMenu.update(events)
+                whitePromoteMenu.draw(screen)
+            
+            global PROMOTE_SELECT
+            if PROMOTE_SELECT:
+                global PROMOTE_MOVE_FLAG
+
+                whitePromoteMenu.disable()
+               
+                promoteMove.flag = PROMOTE_MOVE_FLAG
+
+                PROMOTE_SELECT = False
+                PROMOTE_MOVE_FLAG = Move.Flag.NONE
+
+                game_state.make_move(promoteMove)
+                promoteMove = None
+                game_state.promoteSquare = None
+
+                game_state.selected = None
+                game_state.possibleMoves = []
+                game_state.generate_moves()
+            
         clock.tick(MAX_FPS)
         p.display.flip()
 
@@ -207,8 +161,70 @@ def drawBoard(screen, board, selected, selectedMoves, moveLog, attackMap):
         p.draw.rect(screen, p.Color(186,202,68), p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1) * SQ_SIZE, SQ_SIZE, SQ_SIZE))
         screen.blit(IMAGES[board[lastMove.endSquare]], p.Rect(lastMove.endSquare % DIMENSION * SQ_SIZE, (DIMENSION - int(lastMove.endSquare / DIMENSION) - 1)* SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
+def initPromoteMenu(menu: pm.Menu, color: str):
+
+    queenPromote = menu.add.image("ChessAI/Images/" + color + "Q.png", selectable=True, onselect=selectQueen)
+    queenPromote.resize(width= SQ_SIZE, height= SQ_SIZE)
+    queenPromote.set_padding(0)
+    queenPromote.set_selection_effect(None)
+   
+    rookPromote = menu.add.image("ChessAI/Images/" + color + "R.png", selectable=True, onselect=selectRook)
+    rookPromote.resize(width= SQ_SIZE, height= SQ_SIZE)
+    rookPromote.set_padding(0)
+    rookPromote.set_selection_effect(None)
+
+    bishopPromote = menu.add.image("ChessAI/Images/" + color + "B.png", selectable=True, onselect=selectBishop)
+    bishopPromote.resize(width= SQ_SIZE, height= SQ_SIZE)
+    bishopPromote.set_padding(0)
+    bishopPromote.set_selection_effect(None)
+
+    knightPromote = menu.add.image("ChessAI/Images/" + color + "N.png", selectable=True, onselect=selectKnight)
+    knightPromote.resize(width= SQ_SIZE, height= SQ_SIZE)
+    knightPromote.set_padding(0)
+    knightPromote.set_selection_effect(None)
+
+    menu.set_onupdate(onMenuUpdate)
+    menu.set_onmouseleave(onMenuMouseLeave)
+    menu.set_onmouseover(onMenuMouseOver)
+
+
+def selectQueen(selected: bool, widget, menu: pm.Menu):
+    if selected:
+        global PROMOTE_MOVE_FLAG
+        PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_QUEEN
+        
+       
+def selectRook(selected: bool, widget, menu: pm.Menu):
+    if selected:
+        global PROMOTE_MOVE_FLAG
+        PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_ROOK
+        
+
+def selectBishop(selected: bool, widget, menu: pm.Menu):
+    if selected:
+        global PROMOTE_MOVE_FLAG
+        PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_BISHOP
+        
+
+def selectKnight(selected: bool, widget, menu: pm.Menu):
+    if selected:
+        global PROMOTE_MOVE_FLAG
+        PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_KNIGHT
+
+def onMenuUpdate(event_list, menu: pm.Menu):
+ 
+    if PROMOTE_MOUSE_OVER and next((e for e in event_list if e.type == p.MOUSEBUTTONDOWN), None):
+        global PROMOTE_SELECT
+        PROMOTE_SELECT = True
+
+def onMenuMouseLeave():
+    global PROMOTE_MOUSE_OVER
+    PROMOTE_MOUSE_OVER = False
+
+def onMenuMouseOver():
+    global PROMOTE_MOUSE_OVER
+    PROMOTE_MOUSE_OVER = True
+
 if __name__ == "__main__":
     main()
-
-        
 

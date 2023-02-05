@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import IntEnum
 
 class Move:
     def __init__(self, startSquare: int, endSquare: int, startPiece: int, endPiece: int, flag: int):
@@ -8,7 +8,7 @@ class Move:
         self.endPiece = endPiece
         self.flag = flag
     
-    class Flag(Enum):
+    class Flag(IntEnum):
         NONE = 0
         PAWN_TWO_FORWARD = 1
         EN_PASSANT = 2
