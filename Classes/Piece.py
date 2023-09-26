@@ -40,3 +40,5 @@ def is_same_type(p1, p2):
 
 def is_white(p):
     return p & colorMask == WHITE
+
+
