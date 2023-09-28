@@ -32,7 +32,6 @@ def loadImages():
 """
 Handles user input and graphics updates
 """
-# TODO: refactor whiteToMove to piece color
 
 
 def main():

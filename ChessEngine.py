@@ -1,12 +1,13 @@
 import Classes.Piece as Piece
 from Classes.Move import Move
-from bitmap import BitMap
 
 """
 Defines the current game state (piece placement, current turn, and move log)
 """
-# TODO: implement capturing checking piece moves
+
 # TODO: refactor current color
+
+DEBUG = True
 
 
 class GameState():
@@ -14,9 +15,16 @@ class GameState():
     directions = [8, -8, -1, 1, 7, -7, 9, -9]
     knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
 
+    wQCastleMask = (1 << 2) | (1 << 3)
+    wKCastleMask = (1 << 5) | (1 << 6)
+
+    bQCastleMask = (1 << 58) | (1 << 59)
+    bKCastleMask = (1 << 61) | (1 << 62)
+
     def __init__(self) -> None:
         self.board = [[Piece.EMPTY] for i in range(64)]
         self.whiteToMove = True
+        self.currentColor = Piece.WHITE
         self.moveLog = []
         self.selected = None
 
@@ -125,10 +133,10 @@ class GameState():
         self.pawnWhiteAttackMaps = pawnWhiteAttackMaps
         self.pawnBlackAttackMaps = pawnBlackAttackMaps
 
-        self.whiteKingSideCastle = True
-        self.whiteQueenSideCastle = True
-        self.blackKingSideCastle = True
-        self.blackQueenSideCastle = True
+        self.wKSideCastle = True
+        self.wQSideCastle = True
+        self.bKSideCastle = True
+        self.bQSideCastle = True
 
         self.enPassantSquare = None
         self.possibleMoves = []
@@ -145,6 +153,17 @@ class GameState():
         self.pinnedMap = 0
         self.checkMap = 0
         self.generate_moves()
+
+    # def perft(self, depth: int):
+    #     nodes = 0
+    #     moveList = []
+
+    #     if depth == 0:
+    #         return 1
+
+    #     nMoves = self.generate_moves()
+
+    #     return
 
     def set_state(self, record: str) -> None:
 
@@ -174,8 +193,20 @@ class GameState():
 
         # Side to move
         self.whiteToMove = fields[1] == "w"
+        self.currentColor = Piece.WHITE if self.whiteToMove else Piece.BLACK
 
         # Castling ability
+        self.wKSideCastle = self.wQSideCastle = self.bKSideCastle = self.bQSideCastle = False
+
+        if "K" in fields[2]:
+            self.wKSideCastle = True
+        if "Q" in fields[2]:
+            self.wQSideCastle = True
+        if "k" in fields[2]:
+            self.bKSideCastle = True
+        if "q" in fields[2]:
+            self.bQSideCastle = True
+
         # En passant target square
         # Halfmove clock
         # Fullmove clock
@@ -230,7 +261,7 @@ class GameState():
     def generate_attack_map(self):
 
         self.opponentAttackMap = 0
-        opponentColor = Piece.BLACK if self.whiteToMove else Piece.WHITE
+        opponentColor = Piece.get_opposite_color(self.currentColor)
 
         for rook in self.pieceLists[opponentColor | Piece.ROOK]:
             self.generate_sliding_attacks(rook, 0, 4)
@@ -252,9 +283,8 @@ class GameState():
 
     def generate_attack_data(self):
 
-        color = Piece.WHITE if self.whiteToMove else Piece.BLACK
-        opp_color = Piece.BLACK if color is Piece.WHITE else Piece.WHITE
-        kingSquare = self.pieceLists[color | Piece.KING]
+        opponentColor = Piece.get_opposite_color(self.currentColor)
+        kingSquare = self.pieceLists[self.currentColor | Piece.KING]
         self.pinned = False
         self.inCheck = False
         self.inDoubleCheck = False
@@ -275,7 +305,7 @@ class GameState():
                 if piece == Piece.EMPTY:
                     continue
 
-                if Piece.is_same_color(color, piece):
+                if Piece.is_same_color(self.currentColor, piece):
                     if not friendlyBlock:
                         friendlyBlock = True
                     # Two friendly pieces along ray, no check or pin
@@ -300,7 +330,7 @@ class GameState():
                 return
 
         # knights check
-        for knight in self.pieceLists[opp_color | Piece.KNIGHT]:
+        for knight in self.pieceLists[opponentColor | Piece.KNIGHT]:
             knightAttacks = self.knightAttackMaps[knight]
             if knightAttacks & (1 << kingSquare):
                 self.checkMap |= knight
@@ -309,8 +339,8 @@ class GameState():
                 break
 
         # pawns check
-        pawnAttackMap = self.pawnWhiteAttackMaps if opp_color == Piece.WHITE else self.pawnBlackAttackMaps
-        for pawn in self.pieceLists[opp_color | Piece.PAWN]:
+        pawnAttackMap = self.pawnWhiteAttackMaps if opponentColor == Piece.WHITE else self.pawnBlackAttackMaps
+        for pawn in self.pieceLists[opponentColor | Piece.PAWN]:
             pawnAttacks = pawnAttackMap[pawn]
             if pawnAttacks & (1 << kingSquare):
                 self.checkMap |= pawn
@@ -329,30 +359,35 @@ class GameState():
 
     def generate_moves(self):
 
-        currentColor = Piece.WHITE if self.whiteToMove else Piece.BLACK
-
         self.generate_attack_map()
         self.generate_attack_data()
         self.generate_king_moves(
-            self.pieceLists[currentColor | Piece.KING], currentColor | Piece.KING)
+            self.pieceLists[self.currentColor | Piece.KING], self.currentColor | Piece.KING)
 
         if self.inDoubleCheck:
+            if DEBUG:
+                print(len(self.possibleMoves))
             return
 
-        for pawn in self.pieceLists[currentColor | Piece.PAWN]:
-            self.generate_pawn_moves(pawn, currentColor | Piece.PAWN)
+        for pawn in self.pieceLists[self.currentColor | Piece.PAWN]:
+            self.generate_pawn_moves(pawn, self.currentColor | Piece.PAWN)
 
-        for knight in self.pieceLists[currentColor | Piece.KNIGHT]:
-            self.generate_knight_moves(knight, currentColor | Piece.KNIGHT)
+        for knight in self.pieceLists[self.currentColor | Piece.KNIGHT]:
+            self.generate_knight_moves(
+                knight, self.currentColor | Piece.KNIGHT)
 
-        for bishop in self.pieceLists[currentColor | Piece.BISHOP]:
-            self.generate_sliding_moves(bishop, currentColor | Piece.BISHOP)
+        for bishop in self.pieceLists[self.currentColor | Piece.BISHOP]:
+            self.generate_sliding_moves(
+                bishop, self.currentColor | Piece.BISHOP)
 
-        for rook in self.pieceLists[currentColor | Piece.ROOK]:
-            self.generate_sliding_moves(rook, currentColor | Piece.ROOK)
+        for rook in self.pieceLists[self.currentColor | Piece.ROOK]:
+            self.generate_sliding_moves(rook, self.currentColor | Piece.ROOK)
 
-        for queen in self.pieceLists[currentColor | Piece.QUEEN]:
-            self.generate_sliding_moves(queen, currentColor | Piece.QUEEN)
+        for queen in self.pieceLists[self.currentColor | Piece.QUEEN]:
+            self.generate_sliding_moves(queen, self.currentColor | Piece.QUEEN)
+
+        if DEBUG:
+            print(len(self.possibleMoves))
 
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
@@ -476,41 +511,44 @@ class GameState():
                     Move(startSquare, endSquare, piece, target, Move.Flag.NONE))
 
         # check for castle
-        if self.whiteToMove:
-            if startSquare != 4:
-                return
+        if not self.inCheck:
+            if self.whiteToMove:
 
-            if self.whiteQueenSideCastle and not self.opponentAttackMap & (1 << 2):
-                for i in range(1, 4):
-                    if self.board[i] is not Piece.EMPTY:
-                        return
-                self.possibleMoves.append(
-                    Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                if self.wQSideCastle and not self.opponentAttackMap & self.wQCastleMask:
+                    isEmpty = True
+                    for i in range(1, 4):
+                        if self.board[i] is not Piece.EMPTY:
+                            isEmpty = False
+                            break
+                    if isEmpty:
+                        self.possibleMoves.append(
+                            Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
-            if self.whiteKingSideCastle and not self.opponentAttackMap & (1 << 6):
-                for i in range(5, 7):
-                    if self.board[i] is not Piece.EMPTY:
-                        return
-                self.possibleMoves.append(
-                    Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                if self.wKSideCastle and not self.opponentAttackMap & self.wKCastleMask:
+                    for i in range(5, 7):
+                        if self.board[i] is not Piece.EMPTY:
+                            return
+                    self.possibleMoves.append(
+                        Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
-        else:
-            if startSquare != 60:
-                return
+            else:
 
-            if self.blackQueenSideCastle and not self.opponentAttackMap & (1 << 58):
-                for i in range(57, 60):
-                    if self.board[i] is not Piece.EMPTY:
-                        return
-                self.possibleMoves.append(
-                    Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                if self.bQSideCastle and not self.opponentAttackMap & self.bQCastleMask:
+                    isEmpty = True
+                    for i in range(57, 60):
+                        if self.board[i] is not Piece.EMPTY:
+                            isEmpty = False
+                            break
+                    if isEmpty:
+                        self.possibleMoves.append(
+                            Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
-            if self.blackKingSideCastle and not self.opponentAttackMap & (1 << 62):
-                for i in range(61, 63):
-                    if self.board[i] is not Piece.EMPTY:
-                        return
-                self.possibleMoves.append(
-                    Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                if self.bKSideCastle and not self.opponentAttackMap & self.bKCastleMask:
+                    for i in range(61, 63):
+                        if self.board[i] is not Piece.EMPTY:
+                            return
+                    self.possibleMoves.append(
+                        Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
     def make_move(self, move: Move):
         pieceList = self.pieceLists[move.startPiece]
@@ -534,36 +572,47 @@ class GameState():
             self.enPassantSquare = None
 
         # Castling rights
-        if move.startPiece is Piece.BLACK_ROOK:
-            if move.startSquare == 56:
-                self.blackQueenSideCastle = False
-            if move.startSquare == 63:
-                self.blackKingSideCastle = False
 
-        if move.endPiece is Piece.BLACK_ROOK:
-            if move.endSquare == 56:
-                self.blackQueenSideCastle = False
-            if move.endSquare == 63:
-                self.blackKingSideCastle = False
+        if self.bQSideCastle | self.bKSideCastle:
 
-        if move.startPiece is Piece.WHITE_ROOK:
-            if move.startSquare == 0:
-                self.whiteQueenSideCastle = False
-            if move.startSquare == 7:
-                self.whiteKingSideCastle = False
+            if move.startPiece is Piece.BLACK_KING:
+                self.bQSideCastle = self.bKSideCastle = False
 
-        if move.endPiece is Piece.WHITE_ROOK:
-            if move.endSquare == 0:
-                self.whiteQueenSideCastle = False
-            if move.endSquare == 7:
-                self.whiteKingSideCastle = False
+            elif move.startPiece is Piece.BLACK_ROOK:
+                if move.startSquare == 56:
+                    self.bQSideCastle = False
+                if move.startSquare == 63:
+                    self.bKSideCastle = False
+
+            elif move.endPiece is Piece.BLACK_ROOK:
+                if move.endSquare == 56:
+                    self.bQSideCastle = False
+                if move.endSquare == 63:
+                    self.bKSideCastle = False
+
+        if self.wQSideCastle | self.wKSideCastle:
+
+            if move.startPiece is Piece.WHITE_KING:
+                self.wQSideCastle = self.wKSideCastle = False
+
+            elif move.startPiece is Piece.WHITE_ROOK:
+                if move.startSquare == 0:
+                    self.wQSideCastle = False
+                if move.startSquare == 7:
+                    self.wKSideCastle = False
+
+            elif move.endPiece is Piece.WHITE_ROOK:
+                if move.endSquare == 0:
+                    self.wQSideCastle = False
+                if move.endSquare == 7:
+                    self.wKSideCastle = False
 
         # Castling
         if move.flag is Move.Flag.CASTLE:
             if move.startSquare == 4:
                 rooksList = self.pieceLists[Piece.WHITE_ROOK]
-                self.whiteKingSideCastle = False
-                self.whiteQueenSideCastle = False
+                self.wKSideCastle = False
+                self.wQSideCastle = False
 
                 if move.startSquare < move.endSquare:
                     rooksList[rooksList.index(7)] = 5
@@ -576,8 +625,8 @@ class GameState():
 
             else:
                 rooksList = self.pieceLists[Piece.BLACK_ROOK]
-                self.blackKingSideCastle = False
-                self.blackQueenSideCastle = False
+                self.bKSideCastle = False
+                self.bQSideCastle = False
 
                 if move.startSquare < move.endSquare:
                     rooksList[rooksList.index(63)] = 61
@@ -601,5 +650,25 @@ class GameState():
 
         self.moveLog.append(move)
         self.whiteToMove = not self.whiteToMove
+        self.currentColor = Piece.get_opposite_color(self.currentColor)
 
     # TODO: unmake move function
+    def unmake_move(self):
+
+        if len(self.moveLog) == 0:
+            return
+
+        lastMove = self.moveLog[-1]
+
+        match lastMove.flag:
+            case Move.Flag.NONE | Move.Flag.PAWN_TWO_FORWARD:
+                pass
+            case Move.Flag.CASTLE:
+                pass
+            case Move.Flag.EN_PASSANT:
+                pass
+            # Promotion Moves
+            case _:
+                pass
+
+        return
