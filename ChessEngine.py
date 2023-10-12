@@ -7,25 +7,43 @@ Defines the current game state (piece placement, current turn, and move log)
 
 # TODO: refactor current color
 
-DEBUG = True
+DEBUG = False
 
 
 class GameState():
     START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
     directions = [8, -8, -1, 1, 7, -7, 9, -9]
     knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
 
-    wQCastleMask = (1 << 2) | (1 << 3)
-    wKCastleMask = (1 << 5) | (1 << 6)
+    wKCastleSquaresMask = (1 << 5) | (1 << 6)
+    wQCastleSquaresMask = (1 << 2) | (1 << 3)
 
-    bQCastleMask = (1 << 58) | (1 << 59)
-    bKCastleMask = (1 << 61) | (1 << 62)
+    bKCastleSquaresMask = (1 << 61) | (1 << 62)
+    bQCastleSquaresMask = (1 << 58) | (1 << 59)
+
+    # Game state, holds irreversible position information
+    # Bits 0 - 3, KQkq castling rights
+    # Bits 4, En passant possible (double pawn push previous move)
+    # Bits 5 - 10, En passant square
+
+    wKCastleRightMask = 1
+    wQCastleRightMask = (1 << 1)
+    bKCastleRightMask = (1 << 2)
+    bQCastleRightMask = (1 << 3)
+    wCastleRightMask = wKCastleRightMask | wQCastleRightMask
+    bCastleRightMask = bKCastleRightMask | bQCastleRightMask
+
+    enPassantPossibleMask = (1 << 4)
+    enPassantSquareMask = (63 << 5)
+    enPassantRBS = 5
 
     def __init__(self) -> None:
         self.board = [[Piece.EMPTY] for i in range(64)]
         self.whiteToMove = True
         self.currentColor = Piece.WHITE
         self.moveLog = []
+        self.prevGameStates = []
         self.selected = None
 
         initPieceLists = [None if Piece.is_same_type(
@@ -133,12 +151,8 @@ class GameState():
         self.pawnWhiteAttackMaps = pawnWhiteAttackMaps
         self.pawnBlackAttackMaps = pawnBlackAttackMaps
 
-        self.wKSideCastle = True
-        self.wQSideCastle = True
-        self.bKSideCastle = True
-        self.bQSideCastle = True
+        self.gameState = self.wKCastleRightMask | self.wQCastleRightMask | self.bKCastleRightMask | self.bQCastleRightMask | self.enPassantPossibleMask | self.enPassantSquareMask
 
-        self.enPassantSquare = None
         self.possibleMoves = []
         self.selectedMoves = []
         self.pinned = False
@@ -196,20 +210,22 @@ class GameState():
         self.currentColor = Piece.WHITE if self.whiteToMove else Piece.BLACK
 
         # Castling ability
-        self.wKSideCastle = self.wQSideCastle = self.bKSideCastle = self.bQSideCastle = False
+        self.gameState = 0b0000
 
         if "K" in fields[2]:
-            self.wKSideCastle = True
+            self.gameState |= self.wKCastleRightMask
         if "Q" in fields[2]:
-            self.wQSideCastle = True
+            self.gameState |= self.wQCastleRightMask
         if "k" in fields[2]:
-            self.bKSideCastle = True
+            self.gameState |= self.bKCastleRightMask
         if "q" in fields[2]:
-            self.bQSideCastle = True
+            self.gameState |= self.bQCastleRightMask
 
         # En passant target square
         # Halfmove clock
         # Fullmove clock
+
+        self.prevGameStates.append(self.gameState)
 
     def is_diagonal(self, dir):
         return dir in {-9, -7, 7, 9}
@@ -469,15 +485,16 @@ class GameState():
         # check for en passant
         if self.moveLog:
             lastMove = self.moveLog[-1]
-            if lastMove.flag is Move.Flag.PAWN_TWO_FORWARD and not Piece.is_same_color(piece, lastMove.startPiece):
-                direction = -dir
+            if lastMove.flag is Move.Flag.PAWN_TWO_FORWARD and (lastMove.endSquare is startSquare + 1 or lastMove.endSquare is startSquare - 1) and self.movable_pawn_square(lastMove.endSquare + dir):
 
-                if lastMove.endSquare is startSquare + 1 or lastMove.endSquare is startSquare - 1:
-                    endSquare = lastMove.endSquare + direction
-                    if self.movable_pawn_square(endSquare):
-                        self.possibleMoves.append(
-                            Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.EN_PASSANT))
-                        self.enPassantSquare = lastMove.endSquare
+                endSquare = lastMove.endSquare + dir
+
+                self.possibleMoves.append(
+                    Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.EN_PASSANT))
+
+                self.gameState |= self.enPassantPossibleMask
+                self.gameState |= (
+                    lastMove.endSquare << self.enPassantRBS)
 
     def add_pawn_promotion_moves(self, startSquare: int, endSquare: int, piece: int):
         self.possibleMoves.append(Move(
@@ -514,46 +531,46 @@ class GameState():
         if not self.inCheck:
             if self.whiteToMove:
 
-                if self.wQSideCastle and not self.opponentAttackMap & self.wQCastleMask:
+                if self.gameState & self.wKCastleRightMask and not self.opponentAttackMap & self.wKCastleSquaresMask:
+                    for i in range(5, 7):
+                        if self.board[i] is not Piece.EMPTY:
+                            break
+                    self.possibleMoves.append(
+                        Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+                if self.gameState & self.wQCastleRightMask and not self.opponentAttackMap & self.wQCastleSquaresMask:
                     isEmpty = True
                     for i in range(1, 4):
                         if self.board[i] is not Piece.EMPTY:
                             isEmpty = False
-                            break
+                            return
                     if isEmpty:
                         self.possibleMoves.append(
                             Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
-                if self.wKSideCastle and not self.opponentAttackMap & self.wKCastleMask:
-                    for i in range(5, 7):
-                        if self.board[i] is not Piece.EMPTY:
-                            return
-                    self.possibleMoves.append(
-                        Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
-
             else:
 
-                if self.bQSideCastle and not self.opponentAttackMap & self.bQCastleMask:
+                if self.gameState & self.bKCastleRightMask and not self.opponentAttackMap & self.bKCastleSquaresMask:
+                    for i in range(61, 63):
+                        if self.board[i] is not Piece.EMPTY:
+                            break
+                    self.possibleMoves.append(
+                        Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+                if self.gameState & self.bQCastleRightMask and not self.opponentAttackMap & self.bQCastleSquaresMask:
                     isEmpty = True
                     for i in range(57, 60):
                         if self.board[i] is not Piece.EMPTY:
                             isEmpty = False
-                            break
+                            return
                     if isEmpty:
                         self.possibleMoves.append(
                             Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
-                if self.bKSideCastle and not self.opponentAttackMap & self.bKCastleMask:
-                    for i in range(61, 63):
-                        if self.board[i] is not Piece.EMPTY:
-                            return
-                    self.possibleMoves.append(
-                        Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
-
     def make_move(self, move: Move):
         pieceList = self.pieceLists[move.startPiece]
         if Piece.is_same_type(Piece.KING, move.startPiece):
-            self.pieceLists[move.startPiece] = move.endSquare
+            pieceList = move.endSquare
         else:
             pieceList[pieceList.index(move.startSquare)] = move.endSquare
 
@@ -565,73 +582,79 @@ class GameState():
 
         # En passant
         if move.flag == Move.Flag.EN_PASSANT:
-            self.pieceLists[self.board[self.enPassantSquare]].remove(
-                self.enPassantSquare)
+            enPassantSquare = (
+                self.gameState & self.enPassantSquareMask) >> self.enPassantRBS
 
-            self.board[self.enPassantSquare] = Piece.EMPTY
-            self.enPassantSquare = None
+            self.pieceLists[self.board[enPassantSquare]].remove(
+                enPassantSquare)
+
+            self.board[enPassantSquare] = Piece.EMPTY
+            self.gameState &= ~self.enPassantPossibleMask
+            self.gameState &= ~self.enPassantSquareMask
 
         # Castling rights
-
-        if self.bQSideCastle | self.bKSideCastle:
-
-            if move.startPiece is Piece.BLACK_KING:
-                self.bQSideCastle = self.bKSideCastle = False
-
-            elif move.startPiece is Piece.BLACK_ROOK:
-                if move.startSquare == 56:
-                    self.bQSideCastle = False
-                if move.startSquare == 63:
-                    self.bKSideCastle = False
-
-            elif move.endPiece is Piece.BLACK_ROOK:
-                if move.endSquare == 56:
-                    self.bQSideCastle = False
-                if move.endSquare == 63:
-                    self.bKSideCastle = False
-
-        if self.wQSideCastle | self.wKSideCastle:
+        if self.gameState & self.wCastleRightMask:
 
             if move.startPiece is Piece.WHITE_KING:
-                self.wQSideCastle = self.wKSideCastle = False
+                self.gameState &= ~ self.wCastleRightMask
 
             elif move.startPiece is Piece.WHITE_ROOK:
-                if move.startSquare == 0:
-                    self.wQSideCastle = False
                 if move.startSquare == 7:
-                    self.wKSideCastle = False
+                    self.gameState &= ~ self.wKCastleRightMask
+                elif move.startSquare == 0:
+                    self.gameState &= ~ self.wQCastleRightMask
 
             elif move.endPiece is Piece.WHITE_ROOK:
-                if move.endSquare == 0:
-                    self.wQSideCastle = False
                 if move.endSquare == 7:
-                    self.wKSideCastle = False
+                    self.gameState &= ~ self.wKCastleRightMask
+                elif move.endSquare == 0:
+                    self.gameState &= ~ self.wQCastleRightMask
+
+        if self.gameState & self.bCastleRightMask:
+
+            if move.startPiece is Piece.BLACK_KING:
+                self.gameState &= ~ self.bCastleRightMask
+
+            elif move.startPiece is Piece.BLACK_ROOK:
+                if move.startSquare == 63:
+                    self.gameState &= ~ self.bKCastleRightMask
+                elif move.startSquare == 56:
+                    self.gameState &= ~ self.bQCastleRightMask
+
+            elif move.endPiece is Piece.BLACK_ROOK:
+                if move.endSquare == 63:
+                    self.gameState &= ~ self.bKCastleRightMask
+                elif move.endSquare == 56:
+                    self.gameState &= ~ self.bQCastleRightMask
 
         # Castling
         if move.flag is Move.Flag.CASTLE:
+            # White
             if move.startSquare == 4:
                 rooksList = self.pieceLists[Piece.WHITE_ROOK]
-                self.wKSideCastle = False
-                self.wQSideCastle = False
+                self.gameState &= ~ self.wKCastleRightMask
 
+                # King side castle
                 if move.startSquare < move.endSquare:
                     rooksList[rooksList.index(7)] = 5
                     self.board[7] = Piece.EMPTY
                     self.board[5] = Piece.WHITE_ROOK
+                # Queen side castle
                 else:
                     rooksList[rooksList.index(0)] = 3
                     self.board[0] = Piece.EMPTY
                     self.board[3] = Piece.WHITE_ROOK
-
+            # Black
             else:
                 rooksList = self.pieceLists[Piece.BLACK_ROOK]
-                self.bKSideCastle = False
-                self.bQSideCastle = False
+                self.gameState &= ~ self.bKCastleRightMask
 
+                # King side castle
                 if move.startSquare < move.endSquare:
                     rooksList[rooksList.index(63)] = 61
                     self.board[63] = Piece.EMPTY
                     self.board[61] = Piece.BLACK_ROOK
+                # Queen side castle
                 else:
                     rooksList[rooksList.index(56)] = 59
                     self.board[56] = Piece.EMPTY
@@ -641,14 +664,22 @@ class GameState():
         if move.flag in {Move.Flag.PROMOTE_KNIGHT, Move.Flag.PROMOTE_BISHOP, Move.Flag.PROMOTE_ROOK, Move.Flag.PROMOTE_QUEEN}:
 
             self.pieceLists[move.startPiece].remove(move.endSquare)
-            color = Piece.WHITE if Piece.is_white(
-                move.startPiece) else Piece.BLACK
-
             promotePiece = int(move.flag)
-            self.pieceLists[color | promotePiece].append(move.endSquare)
-            self.board[move.endSquare] = color | promotePiece
+            self.pieceLists[self.currentColor |
+                            promotePiece].append(move.endSquare)
+            self.board[move.endSquare] = self.currentColor | promotePiece
+
+        # Double pawn push
+        if move.flag is Move.Flag.PAWN_TWO_FORWARD:
+            self.gameState |= self.enPassantPossibleMask
+            self.gameState |= (move.endSquare << self.enPassantRBS)
+        else:
+            self.gameState &= ~self.enPassantPossibleMask
+            self.gameState &= ~self.enPassantSquareMask
 
         self.moveLog.append(move)
+        self.prevGameStates.append(self.gameState)
+
         self.whiteToMove = not self.whiteToMove
         self.currentColor = Piece.get_opposite_color(self.currentColor)
 
@@ -659,16 +690,103 @@ class GameState():
             return
 
         lastMove = self.moveLog[-1]
+        startPieceList = self.pieceLists[lastMove.startPiece]
 
         match lastMove.flag:
             case Move.Flag.NONE | Move.Flag.PAWN_TWO_FORWARD:
-                pass
+
+                if Piece.is_same_type(Piece.KING, lastMove.startPiece):
+                    startPieceList = lastMove.startSquare
+                else:
+                    startPieceList[startPieceList.index(
+                        lastMove.endSquare)] = lastMove.startSquare
+                self.board[lastMove.startSquare] = lastMove.startPiece
+                # Move without capture
+                if lastMove.endPiece is Piece.EMPTY:
+                    self.board[lastMove.endSquare] = Piece.EMPTY
+                else:
+                    self.pieceLists[lastMove.endPiece].append(
+                        lastMove.endSquare)
+                    self.board[lastMove.endSquare] = lastMove.endPiece
+
             case Move.Flag.CASTLE:
-                pass
+
+                startPieceList = lastMove.startSquare
+                self.board[lastMove.endSquare] = Piece.EMPTY
+
+                # White
+                if lastMove.startSquare == 4:
+                    rooksList = self.pieceLists[Piece.WHITE_ROOK]
+                    self.board[lastMove.startSquare] = Piece.WHITE_KING
+
+                    # King side castle
+                    if lastMove.startSquare < lastMove.endSquare:
+                        rooksList[rooksList.index(5)] = 7
+                        self.board[5] = Piece.EMPTY
+                        self.board[7] = Piece.WHITE_ROOK
+                    # Queen side castle
+                    else:
+                        rooksList[rooksList.index(3)] = 0
+                        self.board[3] = Piece.EMPTY
+                        self.board[0] = Piece.WHITE_ROOK
+
+                # Black
+                else:
+                    rooksList = self.pieceLists[Piece.BLACK_ROOK]
+                    self.board[lastMove.startSquare] = Piece.BLACK_KING
+                    # King side castle
+                    if lastMove.startSquare < lastMove.endSquare:
+                        rooksList[rooksList.index(61)] = 63
+                        self.board[61] = Piece.EMPTY
+                        self.board[63] = Piece.BLACK_ROOK
+                    # Queen side castle
+                    else:
+                        rooksList[rooksList.index(59)] = 56
+                        self.board[59] = Piece.EMPTY
+                        self.board[56] = Piece.BLACK_ROOK
+
             case Move.Flag.EN_PASSANT:
-                pass
+                startPieceList[startPieceList.index(
+                    lastMove.endSquare)] = lastMove.startSquare
+                self.board[lastMove.startSquare] = lastMove.startPiece
+                self.board[lastMove.endSquare] = Piece.EMPTY
+
+                oppositeColor = Piece.get_opposite_color(self.currentColor)
+                pawnSquare = lastMove.endSquare - self.directions[0] if oppositeColor is Piece.WHITE else lastMove.endSquare - self.direction[1]
+
+                self.pieceLists[self.currentColor | Piece.PAWN].append(pawnSquare)
+                self.board[pawnSquare] = self.currentColor | Piece.PAWN
+                
             # Promotion Moves
             case _:
-                pass
 
-        return
+                startPieceList.append(lastMove.startSquare)
+                self.board[lastMove.startSquare] = lastMove.startPiece
+                # Move without capture
+                if lastMove.endPiece is Piece.EMPTY:
+                    self.board[lastMove.endSquare] = Piece.EMPTY
+                else:
+                    self.pieceLists[lastMove.endPiece].append(
+                        lastMove.endSquare)
+                    self.board[lastMove.endSquare] = lastMove.endPiece
+
+                promotePieceList = []
+                promoteColor = Piece.get_opposite_color(self.currentColor)
+                if lastMove.flag is Move.Flag.PROMOTE_KNIGHT:
+                    promotePieceList = self.pieceLists[promoteColor |
+                                                       Piece.KNIGHT]
+                elif lastMove.flag is Move.Flag.PROMOTE_BISHOP:
+                    promotePieceList = self.pieceLists[promoteColor |
+                                                       Piece.BISHOP]
+                elif lastMove.flag is Move.Flag.PROMOTE_ROOK:
+                    promotePieceList = self.pieceLists[promoteColor | Piece.ROOK]
+                elif lastMove.flag is Move.Flag.PROMOTE_QUEEN:
+                    promotePieceList = self.pieceLists[promoteColor | Piece.QUEEN]
+
+                promotePieceList.remove(lastMove.endSquare)
+
+        self.moveLog.pop()
+        self.prevGameStates.pop()
+        self.gameState = self.prevGameStates[-1]
+        self.whiteToMove = not self.whiteToMove
+        self.currentColor = Piece.get_opposite_color(self.currentColor)

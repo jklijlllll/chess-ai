@@ -11,7 +11,7 @@ SQ_SIZE = WIDTH // DIMENSION
 MAX_FPS = 15
 IMAGES = {}
 
-PROMOTE_MOVE_FLAG = Move.Flag.NONE
+PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_QUEEN
 PROMOTE_SELECT = False
 PROMOTE_MOUSE_OVER = False
 
@@ -80,10 +80,12 @@ def main():
                             game_state.possibleMoves = []
                             game_state.generate_moves()
                         else:
+
                             promoteMove = move
                             game_state.promoteSquare = promoteMove.endSquare
 
                     if game_state.promoteSquare is None:
+
                         game_state.selected = None
                     else:
 
@@ -93,18 +95,42 @@ def main():
                             game_state.selectedMoves = []
                             break
 
-                        x = game_state.promoteSquare % 8 * SQ_SIZE
+                        if not promoteMenu.is_enabled():
 
-                        if game_state.whiteToMove:
-                            promoteMenu = whitePromoteMenu
-                            y = 0
+                            x = game_state.promoteSquare % 8 * SQ_SIZE
+
+                            if game_state.whiteToMove:
+                                promoteMenu = whitePromoteMenu
+                                y = 0
+                            else:
+                                promoteMenu = blackPromoteMenu
+                                y = 4 * SQ_SIZE
+
+                            promoteMenu.set_absolute_position(x, y)
+                            promoteMenu.enable()
+                            # PROMOTE_MOUSE_OVER = True if promoteMenu.get_mouseover_widget() is not None else False
+                            PROMOTE_MOUSE_OVER = True
                         else:
-                            promoteMenu = blackPromoteMenu
-                            y = 4 * SQ_SIZE
 
-                        promoteMenu.set_absolute_position(x, y)
-                        promoteMenu.enable()
-                        PROMOTE_MOUSE_OVER = True if promoteMenu.get_mouseover_widget() is not None else False
+                            global PROMOTE_SELECT
+                            if PROMOTE_SELECT:
+
+                                global PROMOTE_MOVE_FLAG
+
+                                promoteMenu.disable()
+
+                                promoteMove.flag = PROMOTE_MOVE_FLAG
+
+                                PROMOTE_SELECT = False
+                                PROMOTE_MOVE_FLAG = Move.Flag.PROMOTE_QUEEN
+
+                                game_state.make_move(promoteMove)
+                                promoteMove = None
+                                game_state.promoteSquare = None
+
+                                game_state.selected = None
+                                game_state.possibleMoves = []
+                                game_state.generate_moves()
 
                     # if game_state.opponentAttackMap & (1 << game_state.pieceLists[(Piece.WHITE if game_state.whiteToMove else Piece.BLACK) | Piece.KING]):
                     #     print("check")
@@ -116,35 +142,23 @@ def main():
                     else:
                         game_state.selected = None
                         game_state.selectedMoves = []
+            if e.type == p.KEYDOWN and e.key == p.K_z:
+                promoteMenu.disable()
+                game_state.promoteSquare = None
+                game_state.unmake_move()
+                game_state.selected = None
+                game_state.selectedMoves = []
+                game_state.possibleMoves = []
+                game_state.generate_moves()
 
         # if not game_state.whiteToMove:
         #     game_state.make_move(random.choice(game_state.possibleMoves))
         #     game_state.generate_moves()
         drawGameState(screen, game_state)
-        # Select promote piece
-        if game_state.promoteSquare is not None:
-            if promoteMenu.is_enabled():
-                promoteMenu.update(events)
-                promoteMenu.draw(screen)
 
-            global PROMOTE_SELECT
-            if PROMOTE_SELECT:
-                global PROMOTE_MOVE_FLAG
-
-                promoteMenu.disable()
-
-                promoteMove.flag = PROMOTE_MOVE_FLAG
-
-                PROMOTE_SELECT = False
-                PROMOTE_MOVE_FLAG = Move.Flag.NONE
-
-                game_state.make_move(promoteMove)
-                promoteMove = None
-                game_state.promoteSquare = None
-
-                game_state.selected = None
-                game_state.possibleMoves = []
-                game_state.generate_moves()
+        if game_state.promoteSquare is not None and promoteMenu.is_enabled():
+            promoteMenu.update(events)
+            promoteMenu.draw(screen)
 
         clock.tick(MAX_FPS)
         p.display.flip()
