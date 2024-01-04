@@ -145,7 +145,8 @@ def main():
             if e.type == p.KEYDOWN and e.key == p.K_z:
                 promoteMenu.disable()
                 game_state.promoteSquare = None
-                game_state.unmake_move()
+                if len(game_state.moveLog) != 0:
+                    game_state.unmake_move(game_state.moveLog[-1])
                 game_state.selected = None
                 game_state.selectedMoves = []
                 game_state.possibleMoves = []

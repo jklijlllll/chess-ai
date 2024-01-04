@@ -1,17 +1,22 @@
 import Classes.Piece as Piece
 from Classes.Move import Move
+from copy import deepcopy
+import chess
 
 """
 Defines the current game state (piece placement, current turn, and move log)
 """
 
-# TODO: refactor current color
 
 DEBUG = False
 
+# rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+# rnbqkbnr/1pppppp1/8/p5Pp/8/8/PPPPPP1P/RNBQKBNR w KQkq h6 0 1
+
+START_POSITION = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+
 
 class GameState():
-    START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
     directions = [8, -8, -1, 1, 7, -7, 9, -9]
     knightDirections = [15, 17, -17, -15, 10, -6, 6, -10]
@@ -161,23 +166,113 @@ class GameState():
 
         self.promoteSquare = None
 
+        self.halfMoveClock = 0
+        self.fullMoveClock = 0
+
         # TODO: add fen position input with default start position
-        self.set_state(self.START_POSITION)
+        self.set_state(START_POSITION)
         self.opponentAttackMap = 0
         self.pinnedMap = 0
         self.checkMap = 0
-        self.generate_moves()
 
-    # def perft(self, depth: int):
-    #     nodes = 0
-    #     moveList = []
+        if not DEBUG:
+            self.generate_moves()
+        else:
+            self.pyboard = chess.Board(START_POSITION)
 
-    #     if depth == 0:
-    #         return 1
+            print(self.perft(3))
 
-    #     nMoves = self.generate_moves()
+    def perft(self, depth: int):
+        nodes = 0
 
-    #     return
+        if depth == 0:
+            return 1
+
+        moveList = deepcopy(self.generate_moves())
+
+        if depth == 1:
+            if (len(moveList) != self.pyboard.legal_moves.count()):
+                self.print_position()
+                gen_moves = [m.uci() for m in moveList]
+                legal_moves = [self.pyboard.uci(m)
+                               for m in self.pyboard.legal_moves]
+
+                incorrect_moves = list(set(gen_moves) - set(legal_moves))
+                missing_moves = list(set(legal_moves) - set(gen_moves))
+
+                print(incorrect_moves)
+                print(missing_moves)
+
+            return len(moveList)
+
+        for m in moveList:
+
+            self.make_move(m)
+            self.pyboard.push(chess.Move(
+                m.startSquare, m.endSquare, m.pyChessPromotePiece(), None))
+            nodes += self.perft(depth - 1)
+            self.unmake_move(m)
+            self.pyboard.pop()
+
+        return nodes
+
+    def print_move(self, move: Move):
+        pieceNames = dict(zip(Piece.pieces, Piece.pieceImageNames))
+        pieceNames[0] = "Empty"
+        print("Start Square: ", move.startSquare, "End Square: ", move.endSquare, "Start Piece: ",
+              pieceNames[move.startPiece], "End Piece: ", pieceNames[move.endPiece], "Flag: ", move.flag)
+
+    def print_position(self):
+
+        pieceDict = dict(zip(Piece.pieces, Piece.pieceNames))
+        position = ""
+
+        for i in range(8):
+            emptySquares = 0
+            for j in range(8):
+                piece = self.board[64 - (i + 1) * 8 + j]
+
+                if piece is Piece.EMPTY:
+                    emptySquares += 1
+                else:
+                    if emptySquares != 0:
+                        position += str(emptySquares)
+                        emptySquares = 0
+                    position += pieceDict[piece]
+
+            if emptySquares != 0:
+                position += str(emptySquares)
+            if i < 7:
+                position += "/"
+
+        if self.currentColor is Piece.WHITE:
+            position += " w "
+        else:
+            position += " b "
+
+        if self.gameState & (self.wKCastleRightMask | self.wQCastleRightMask | self.bKCastleRightMask | self.bQCastleRightMask):
+            if self.gameState & self.wKCastleRightMask:
+                position += "K"
+            if self.gameState & self.wQCastleRightMask:
+                position += "Q"
+            if self.gameState & self.bKCastleRightMask:
+                position += "k"
+            if self.gameState & self.bQCastleRightMask:
+                position += "q"
+            position += " "
+        else:
+            position += "_ "
+
+        if self.gameState & self.enPassantPossibleMask:
+            epSquare = (self.gameState &
+                        self.enPassantSquareMask) >> self.enPassantRBS
+            epSquare += self.directions[1] if self.whiteToMove else self.directions[0]
+            position += chr(epSquare % 8 + ord('a'))
+            position += str(epSquare // 8 + 1) + " "
+        else:
+            position += "- "
+
+        print(position + "0 1")
 
     def set_state(self, record: str) -> None:
 
@@ -222,8 +317,22 @@ class GameState():
             self.gameState |= self.bQCastleRightMask
 
         # En passant target square
+
+        if "-" not in fields[3]:
+            dir = self.directions[1] if self.whiteToMove else self.directions[0]
+            enPassantSquare = (
+                (ord(fields[3][0]) - 97) + (int(fields[3][1]) - 1) * 8) + dir
+            self.gameState |= self.enPassantPossibleMask
+            self.gameState |= (enPassantSquare << self.enPassantRBS)
+
+        else:
+            self.gameState &= ~self.enPassantPossibleMask
+
         # Halfmove clock
+            self.halfMoveClock = fields[4]
+
         # Fullmove clock
+            self.fullMoveClock = fields[5]
 
         self.prevGameStates.append(self.gameState)
 
@@ -270,8 +379,9 @@ class GameState():
         return squares
 
     # returns true if valid square is movable for a pawn piece
-    def movable_pawn_square(self, endSquare: int):
-        return (not self.pinned or (self.pinnedMap & 1 << endSquare)) and (not self.inCheck or (self.checkMap & 1 << endSquare))
+    def movable_pawn_square(self, startSquare: int, endSquare: int):
+
+        return (not self.pinned or (not self.pinnedMap & (1 << startSquare))) and (not self.inCheck or (self.checkMap & 1 << endSquare))
 
     # TODO: check for pins and checkmate
     def generate_attack_map(self):
@@ -375,6 +485,10 @@ class GameState():
 
     def generate_moves(self):
 
+        # if DEBUG:
+        #     self.print_position()
+
+        self.possibleMoves.clear()
         self.generate_attack_map()
         self.generate_attack_data()
         self.generate_king_moves(
@@ -382,7 +496,7 @@ class GameState():
 
         if self.inDoubleCheck:
             if DEBUG:
-                print(len(self.possibleMoves))
+                return self.possibleMoves
             return
 
         for pawn in self.pieceLists[self.currentColor | Piece.PAWN]:
@@ -403,7 +517,10 @@ class GameState():
             self.generate_sliding_moves(queen, self.currentColor | Piece.QUEEN)
 
         if DEBUG:
-            print(len(self.possibleMoves))
+            # for m in self.possibleMoves:
+            #     self.print_move(m)
+            # print("\n")
+            return self.possibleMoves
 
     def generate_sliding_moves(self, startSquare: int, piece: int):
 
@@ -460,7 +577,7 @@ class GameState():
         # check if pawn is pushable
         endSquare = startSquare + dir
 
-        if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY and self.movable_pawn_square(endSquare):
+        if self.within_board(endSquare) and self.board[endSquare] is Piece.EMPTY and self.movable_pawn_square(startSquare, endSquare):
 
             if self.get_rank(endSquare) == promoteRank:
                 self.add_pawn_promotion_moves(startSquare, endSquare, piece)
@@ -474,7 +591,8 @@ class GameState():
         # check for pawn captures
         for i in range(len(pawnAttacks[startSquare])):
             endSquare = pawnAttacks[startSquare][i]
-            if self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]) and self.movable_pawn_square(endSquare):
+
+            if self.board[endSquare] is not Piece.EMPTY and not Piece.is_same_color(piece, self.board[endSquare]) and self.movable_pawn_square(startSquare, endSquare):
                 if self.get_rank(endSquare) == promoteRank:
                     self.add_pawn_promotion_moves(
                         startSquare, endSquare, piece)
@@ -483,18 +601,16 @@ class GameState():
                         Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.NONE))
 
         # check for en passant
-        if self.moveLog:
-            lastMove = self.moveLog[-1]
-            if lastMove.flag is Move.Flag.PAWN_TWO_FORWARD and (lastMove.endSquare is startSquare + 1 or lastMove.endSquare is startSquare - 1) and self.movable_pawn_square(lastMove.endSquare + dir):
+        if self.gameState & self.enPassantPossibleMask:
 
-                endSquare = lastMove.endSquare + dir
+            endSquare = ((self.gameState &
+                         self.enPassantSquareMask) >> self.enPassantRBS) + dir
 
-                self.possibleMoves.append(
-                    Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.EN_PASSANT))
+            if endSquare not in pawnAttacks[startSquare]:
+                return
 
-                self.gameState |= self.enPassantPossibleMask
-                self.gameState |= (
-                    lastMove.endSquare << self.enPassantRBS)
+            self.possibleMoves.append(
+                Move(startSquare, endSquare, piece, self.board[endSquare], Move.Flag.EN_PASSANT))
 
     def add_pawn_promotion_moves(self, startSquare: int, endSquare: int, piece: int):
         self.possibleMoves.append(Move(
@@ -529,43 +645,44 @@ class GameState():
 
         # check for castle
         if not self.inCheck:
+
             if self.whiteToMove:
 
                 if self.gameState & self.wKCastleRightMask and not self.opponentAttackMap & self.wKCastleSquaresMask:
+                    isEmpty = True
                     for i in range(5, 7):
                         if self.board[i] is not Piece.EMPTY:
-                            break
-                    self.possibleMoves.append(
-                        Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
-
-                if self.gameState & self.wQCastleRightMask and not self.opponentAttackMap & self.wQCastleSquaresMask:
-                    isEmpty = True
-                    for i in range(1, 4):
-                        if self.board[i] is not Piece.EMPTY:
                             isEmpty = False
-                            return
+                            break
                     if isEmpty:
                         self.possibleMoves.append(
-                            Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                            Move(4, 6, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+                if self.gameState & self.wQCastleRightMask and not self.opponentAttackMap & self.wQCastleSquaresMask:
+                    for i in range(1, 4):
+                        if self.board[i] is not Piece.EMPTY:
+                            return
+                    self.possibleMoves.append(
+                        Move(4, 2, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
             else:
 
                 if self.gameState & self.bKCastleRightMask and not self.opponentAttackMap & self.bKCastleSquaresMask:
+                    isEmpty = True
                     for i in range(61, 63):
                         if self.board[i] is not Piece.EMPTY:
-                            break
-                    self.possibleMoves.append(
-                        Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
-
-                if self.gameState & self.bQCastleRightMask and not self.opponentAttackMap & self.bQCastleSquaresMask:
-                    isEmpty = True
-                    for i in range(57, 60):
-                        if self.board[i] is not Piece.EMPTY:
                             isEmpty = False
-                            return
+                            break
                     if isEmpty:
                         self.possibleMoves.append(
-                            Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
+                            Move(60, 62, piece, Piece.EMPTY, Move.Flag.CASTLE))
+
+                if self.gameState & self.bQCastleRightMask and not self.opponentAttackMap & self.bQCastleSquaresMask:
+                    for i in range(57, 60):
+                        if self.board[i] is not Piece.EMPTY:
+                            return
+                    self.possibleMoves.append(
+                        Move(60, 58, piece, Piece.EMPTY, Move.Flag.CASTLE))
 
     def make_move(self, move: Move):
         pieceList = self.pieceLists[move.startPiece]
@@ -678,18 +795,16 @@ class GameState():
             self.gameState &= ~self.enPassantSquareMask
 
         self.moveLog.append(move)
+
         self.prevGameStates.append(self.gameState)
 
         self.whiteToMove = not self.whiteToMove
         self.currentColor = Piece.get_opposite_color(self.currentColor)
 
     # TODO: unmake move function
-    def unmake_move(self):
 
-        if len(self.moveLog) == 0:
-            return
+    def unmake_move(self, lastMove: Move):
 
-        lastMove = self.moveLog[-1]
         startPieceList = self.pieceLists[lastMove.startPiece]
 
         match lastMove.flag:
@@ -752,11 +867,14 @@ class GameState():
                 self.board[lastMove.endSquare] = Piece.EMPTY
 
                 oppositeColor = Piece.get_opposite_color(self.currentColor)
-                pawnSquare = lastMove.endSquare - self.directions[0] if oppositeColor is Piece.WHITE else lastMove.endSquare - self.direction[1]
+                pawnSquare = lastMove.endSquare - \
+                    self.directions[0] if oppositeColor is Piece.WHITE else lastMove.endSquare - \
+                    self.directions[1]
 
-                self.pieceLists[self.currentColor | Piece.PAWN].append(pawnSquare)
+                self.pieceLists[self.currentColor |
+                                Piece.PAWN].append(pawnSquare)
                 self.board[pawnSquare] = self.currentColor | Piece.PAWN
-                
+
             # Promotion Moves
             case _:
 
